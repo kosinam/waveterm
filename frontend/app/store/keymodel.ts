@@ -3,6 +3,7 @@
 
 import { WaveAIModel } from "@/app/aipanel/waveai-model";
 import { FocusManager } from "@/app/store/focusManager";
+import { WorkspaceService } from "@/app/store/services";
 import {
     atoms,
     createBlock,
@@ -292,6 +293,24 @@ function switchTabAbs(index: number) {
     getApi().setActiveTab(newActiveTabId);
 }
 
+async function switchWorkspaceAbs(index: number) {
+    const workspaceList = await WorkspaceService.ListWorkspaces();
+    if (!workspaceList || workspaceList.length === 0) return;
+    const newIdx = index - 1;
+    if (newIdx < 0 || newIdx >= workspaceList.length) return;
+    getApi().switchWorkspace(workspaceList[newIdx].workspaceid);
+}
+
+async function switchWorkspaceByOffset(offset: number) {
+    const workspaceList = await WorkspaceService.ListWorkspaces();
+    if (!workspaceList || workspaceList.length === 0) return;
+    const curWorkspaceId = globalStore.get(atoms.workspaceId);
+    const curIdx = workspaceList.findIndex((ws) => ws.workspaceid === curWorkspaceId);
+    if (curIdx === -1) return;
+    const newIdx = (curIdx + offset + workspaceList.length) % workspaceList.length;
+    getApi().switchWorkspace(workspaceList[newIdx].workspaceid);
+}
+
 function switchTab(offset: number) {
     console.log("switchTab", offset);
     const ws = globalStore.get(atoms.workspace);
@@ -398,6 +417,32 @@ async function handleSplitVertical(position: "before" | "after") {
     }
     const blockDef = getDefaultNewBlockDef();
     await createBlockSplitVertically(blockDef, focusedNode.data.blockId, position);
+}
+
+function getWebBlockDef(): BlockDef {
+    return {
+        meta: {
+            view: "web",
+        },
+    };
+}
+
+async function handleSplitHorizontalWeb(position: "before" | "after") {
+    const layoutModel = getLayoutModelForStaticTab();
+    const focusedNode = globalStore.get(layoutModel.focusedNode);
+    if (focusedNode == null) {
+        return;
+    }
+    await createBlockSplitHorizontally(getWebBlockDef(), focusedNode.data.blockId, position);
+}
+
+async function handleSplitVerticalWeb(position: "before" | "after") {
+    const layoutModel = getLayoutModelForStaticTab();
+    const focusedNode = globalStore.get(layoutModel.focusedNode);
+    if (focusedNode == null) {
+        return;
+    }
+    await createBlockSplitVertically(getWebBlockDef(), focusedNode.data.blockId, position);
 }
 
 let lastHandledEvent: KeyboardEvent | null = null;
@@ -755,6 +800,94 @@ function registerGlobalKeys() {
         return true;
     });
     globalChordMap.set("Ctrl:Shift:s", splitBlockKeys);
+
+    // Tmux-style Ctrl-B prefix keybindings.
+    // Note: Ctrl-B is consumed as the prefix key and will not pass through to the terminal
+    // (same behavior as tmux itself).
+    const ctrlBKeys = new Map<string, KeyHandler>();
+    // tmux: % — split current pane vertically (side by side, new pane to the right)
+    ctrlBKeys.set("Shift:%", () => {
+        handleSplitHorizontal("after");
+        return true;
+    });
+    // tmux: " — split current pane horizontally (new pane below)
+    ctrlBKeys.set('Shift:"', () => {
+        handleSplitVertical("after");
+        return true;
+    });
+    // tmux: c — create new window (tab)
+    ctrlBKeys.set("c", () => {
+        createTab();
+        return true;
+    });
+    // tmux: n/p — next/previous window (tab)
+    ctrlBKeys.set("n", () => {
+        switchTab(1);
+        return true;
+    });
+    ctrlBKeys.set("p", () => {
+        switchTab(-1);
+        return true;
+    });
+    // tmux: 1-9 — switch to session (workspace) by number
+    for (let idx = 1; idx <= 9; idx++) {
+        const wsIdx = idx;
+        ctrlBKeys.set(`${wsIdx}`, () => {
+            switchWorkspaceAbs(wsIdx);
+            return true;
+        });
+    }
+    // tmux: ( / ) — switch to previous/next session (workspace)
+    ctrlBKeys.set("Shift:(", () => {
+        switchWorkspaceByOffset(-1);
+        return true;
+    });
+    ctrlBKeys.set("Shift:)", () => {
+        switchWorkspaceByOffset(1);
+        return true;
+    });
+    // tmux: arrow keys — navigate panes
+    ctrlBKeys.set("ArrowUp", () => {
+        switchBlockInDirection(NavigateDirection.Up);
+        return true;
+    });
+    ctrlBKeys.set("ArrowDown", () => {
+        switchBlockInDirection(NavigateDirection.Down);
+        return true;
+    });
+    ctrlBKeys.set("ArrowLeft", () => {
+        switchBlockInDirection(NavigateDirection.Left);
+        return true;
+    });
+    ctrlBKeys.set("ArrowRight", () => {
+        switchBlockInDirection(NavigateDirection.Right);
+        return true;
+    });
+    // tmux: z — zoom (magnify) current pane
+    ctrlBKeys.set("z", () => {
+        const layoutModel = getLayoutModelForStaticTab();
+        const focusedNode = globalStore.get(layoutModel.focusedNode);
+        if (focusedNode != null) {
+            layoutModel.magnifyNodeToggle(focusedNode.id);
+        }
+        return true;
+    });
+    // tmux: x — close current pane
+    ctrlBKeys.set("x", () => {
+        genericClose();
+        return true;
+    });
+    // custom: b — open a new browser pane to the right
+    ctrlBKeys.set("b", () => {
+        handleSplitHorizontalWeb("after");
+        return true;
+    });
+    // custom: B (Shift-B) — open a new browser pane below
+    ctrlBKeys.set("B", () => {
+        handleSplitVerticalWeb("after");
+        return true;
+    });
+    globalChordMap.set("Ctrl:b", ctrlBKeys);
 }
 
 function registerBuilderGlobalKeys() {
