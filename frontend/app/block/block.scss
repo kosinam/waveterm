@@ -434,7 +434,7 @@
 
         &.block-focused {
             .block-mask {
-                border: 2px solid var(--accent-color);
+                border: 2px solid var(--block-border-color);
             }
 
             &.block-no-highlight,

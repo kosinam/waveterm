@@ -31,6 +31,7 @@ const electronApp = electron.app;
 
 let webviewFocusId: number = null;
 let webviewKeys: string[] = [];
+let webviewChordTriggerKeys: string[] = [];
 
 export function openBuilderWindow(appId?: string) {
     const normalizedAppId = appId || "";
@@ -305,11 +306,35 @@ export function initIpcHandlers() {
                 if (input.type != "keyDown") {
                     return;
                 }
+                // If a chord is active, intercept the second key and reinject it (same as tab's before-input-event)
+                const tabView = getWaveTabViewByWebContentsId(parentWc.id);
+                if (tabView?.keyboardChordMode) {
+                    // Don't consume bare modifier keys — they arrive as separate events before the
+                    // actual chord key (e.g. Shift fires before % when pressing Shift+5).
+                    // Clearing chord mode here would cause the real key to miss the chord handler.
+                    const modifierKeys = new Set([
+                        "Shift",
+                        "Control",
+                        "Alt",
+                        "Meta",
+                        "CapsLock",
+                        "NumLock",
+                        "ScrollLock",
+                    ]);
+                    if (!modifierKeys.has(waveEvent.key)) {
+                        e.preventDefault();
+                        tabView.setKeyboardChordMode(false);
+                        parentWc.send("reinject-key", waveEvent);
+                    }
+                    return;
+                }
                 for (let keyDesc of webviewKeys) {
                     if (keyutil.checkKeyPressed(waveEvent, keyDesc)) {
                         e.preventDefault();
+                        if (webviewChordTriggerKeys.some((t) => keyutil.checkKeyPressed(waveEvent, t))) {
+                            tabView?.setKeyboardChordMode(true);
+                        }
                         parentWc.send("reinject-key", waveEvent);
-                        console.log("webview reinject-key", keyDesc);
                         return;
                     }
                 }
@@ -322,6 +347,10 @@ export function initIpcHandlers() {
 
     electron.ipcMain.on("register-global-webview-keys", (event, keys: string[]) => {
         webviewKeys = keys ?? [];
+    });
+
+    electron.ipcMain.on("register-webview-chord-trigger-keys", (event, keys: string[]) => {
+        webviewChordTriggerKeys = keys ?? [];
     });
 
     electron.ipcMain.on("set-keyboard-chord-mode", (event) => {

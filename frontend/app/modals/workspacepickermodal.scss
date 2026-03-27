@@ -1,0 +1,98 @@
+// Copyright 2026, Command Line Inc.
+// SPDX-License-Identifier: Apache-2.0
+
+.ws-picker-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: var(--zindex-modal-wrapper);
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding-top: 80px;
+}
+
+.ws-picker {
+    background-color: var(--main-bg-color);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    width: 320px;
+    max-height: 400px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    outline: none;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+    font: var(--fixed-font);
+}
+
+.ws-picker-title {
+    padding: 6px 12px;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--secondary-text-color);
+    border-bottom: 1px solid var(--border-color);
+    user-select: none;
+}
+
+.ws-picker-list {
+    overflow-y: auto;
+    flex: 1;
+}
+
+.ws-picker-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    cursor: pointer;
+    color: var(--main-text-color);
+    user-select: none;
+
+    &.selected {
+        background-color: var(--highlight-bg-color);
+    }
+
+    &.current {
+        color: var(--block-border-color);
+    }
+}
+
+.ws-picker-icon {
+    width: 16px;
+    text-align: center;
+    flex-shrink: 0;
+    font-size: 13px;
+}
+
+.ws-picker-name {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.ws-picker-badge {
+    font-size: 10px;
+    padding: 1px 5px;
+    border-radius: 3px;
+    flex-shrink: 0;
+
+    &.current-badge {
+        background-color: rgb(from var(--block-border-color) r g b / 0.2);
+        color: var(--block-border-color);
+        border: 1px solid rgb(from var(--block-border-color) r g b / 0.4);
+    }
+
+    &.open-badge {
+        background-color: var(--hover-bg-color);
+        color: var(--secondary-text-color);
+        border: 1px solid var(--border-color);
+    }
+}
+
+.ws-picker-empty {
+    padding: 12px;
+    color: var(--secondary-text-color);
+    text-align: center;
+}

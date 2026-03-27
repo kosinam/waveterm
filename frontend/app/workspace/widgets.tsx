@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { Tooltip } from "@/app/element/tooltip";
+import { RpcApi } from "@/app/store/wshclientapi";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
 import { useWaveEnv, WaveEnv, WaveEnvSubset } from "@/app/waveenv/waveenv";
+import { getSettingsKeyAtom } from "@/store/global";
 import { shouldIncludeWidgetForWorkspace } from "@/app/workspace/widgetfilter";
 import { modalsModel } from "@/store/modalmodel";
 import { fireAndForget, isBlank, makeIconClass } from "@/util/util";
@@ -377,6 +379,7 @@ const Widgets = memo(() => {
     const containerRef = useRef<HTMLDivElement>(null);
     const measurementRef = useRef<HTMLDivElement>(null);
 
+    const hideWidgetPanel = useAtomValue(getSettingsKeyAtom("app:hidewidgetpanel"));
     const featureWaveAppBuilder = fullConfig?.settings?.["feature:waveappbuilder"] ?? false;
     const widgetsMap = fullConfig?.widgets ?? {};
     const filteredWidgets = Object.fromEntries(
@@ -437,6 +440,15 @@ const Widgets = memo(() => {
     const handleWidgetsBarContextMenu = (e: React.MouseEvent) => {
         e.preventDefault();
         const menu: ContextMenuItem[] = [
+            {
+                label: "Hide widget panel",
+                click: () => {
+                    fireAndForget(() =>
+                        RpcApi.SetConfigCommand(TabRpcClient, { "app:hidewidgetpanel": true })
+                    );
+                },
+            },
+            { type: "separator" },
             {
                 label: "Edit widgets.json",
                 click: () => {

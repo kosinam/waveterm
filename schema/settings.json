@@ -29,6 +29,9 @@
         "app:hideaibutton": {
           "type": "boolean"
         },
+        "app:hidewidgetpanel": {
+          "type": "boolean"
+        },
         "app:disablectrlshiftarrows": {
           "type": "boolean"
         },

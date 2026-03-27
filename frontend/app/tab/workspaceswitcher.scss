@@ -25,6 +25,16 @@
         align-items: center;
         justify-content: center;
     }
+
+    .workspace-name {
+        font-size: 11px;
+        font-weight: 500;
+        line-height: 15px;
+        max-width: 120px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
 }
 
 .workspace-switcher-content {
@@ -101,8 +111,13 @@
                 gap: 5px;
             }
 
-            .wave-iconbutton.edit {
+            .wave-iconbutton.edit,
+            .wave-iconbutton.delete {
                 visibility: hidden;
+            }
+
+            .wave-iconbutton.delete {
+                color: var(--error-color);
             }
 
             .wave-iconbutton.window {
@@ -111,7 +126,8 @@
             }
         }
 
-        &:hover .wave-iconbutton.edit {
+        &:hover .wave-iconbutton.edit,
+        &:hover .wave-iconbutton.delete {
             visibility: visible;
         }
 

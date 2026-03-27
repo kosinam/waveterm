@@ -49,13 +49,16 @@ type WorkspaceList = WorkspaceListEntry[];
 const workspaceMapAtom = atom<WorkspaceList>([]);
 const workspaceSplitAtom = splitAtom(workspaceMapAtom);
 const editingWorkspaceAtom = atom<string>();
+export const openWorkspaceEditorForCurrentAtom = atom(false);
+export const openEditorAfterNextWorkspaceSwitchAtom = atom(false);
 const WorkspaceSwitcher = forwardRef<HTMLDivElement>((_, ref) => {
     const env = useWaveEnv<WorkspaceSwitcherEnv>();
     const setWorkspaceList = useSetAtom(workspaceMapAtom);
     const activeWorkspace = useAtomValueSafe(env.atoms.workspace);
     const workspaceList = useAtomValue(workspaceSplitAtom);
     const setEditingWorkspace = useSetAtom(editingWorkspaceAtom);
-
+    const openEditorForCurrent = useAtomValue(openWorkspaceEditorForCurrentAtom);
+    const setOpenEditorForCurrent = useSetAtom(openWorkspaceEditorForCurrentAtom);
     const updateWorkspaceList = useCallback(async () => {
         const workspaceList = await env.services.workspace.ListWorkspaces();
         if (!workspaceList) {
@@ -71,6 +74,13 @@ const WorkspaceSwitcher = forwardRef<HTMLDivElement>((_, ref) => {
             });
         }
         setWorkspaceList(newList);
+        // If Ctrl-b N was pressed, open the editor now that the list is fully populated
+        if (globalStore.get(openEditorAfterNextWorkspaceSwitchAtom)) {
+            const currentWorkspace = globalStore.get(env.atoms.workspace);
+            globalStore.set(openEditorAfterNextWorkspaceSwitchAtom, false);
+            globalStore.set(editingWorkspaceAtom, currentWorkspace?.oid);
+            document.querySelector<HTMLElement>(".workspace-switcher-button")?.click();
+        }
     }, []);
 
     useEffect(
@@ -85,6 +95,13 @@ const WorkspaceSwitcher = forwardRef<HTMLDivElement>((_, ref) => {
     useEffect(() => {
         fireAndForget(updateWorkspaceList);
     }, []);
+
+    useEffect(() => {
+        if (!openEditorForCurrent) return;
+        setOpenEditorForCurrent(false);
+        setEditingWorkspace(activeWorkspace.oid);
+        document.querySelector<HTMLElement>(".workspace-switcher-button")?.click();
+    }, [openEditorForCurrent]);
 
     const onDeleteWorkspace = useCallback((workspaceId: string) => {
         env.electron.deleteWorkspace(workspaceId);
@@ -121,6 +138,7 @@ const WorkspaceSwitcher = forwardRef<HTMLDivElement>((_, ref) => {
                 }}
             >
                 <span className="workspace-icon">{workspaceIcon}</span>
+                {activeWorkspace.name && <span className="workspace-name">{activeWorkspace.name}</span>}
             </PopoverButton>
             <PopoverContent className="workspace-switcher-content">
                 <div className="title">{isActiveWorkspaceSaved ? "Switch workspace" : "Open workspace"}</div>
@@ -199,6 +217,16 @@ const WorkspaceSwitcherItem = ({
             }
         },
     };
+    const deleteIconDecl: IconButtonDecl = {
+        elemtype: "iconbutton",
+        className: "delete",
+        icon: "trash",
+        title: "Delete workspace",
+        click: (e) => {
+            e.stopPropagation();
+            onDeleteWorkspace(workspace.oid);
+        },
+    };
     const windowIconDecl: IconButtonDecl = {
         elemtype: "iconbutton",
         className: "window",
@@ -240,6 +268,7 @@ const WorkspaceSwitcherItem = ({
                     <ExpandableMenuItemRightElement>
                         <div className="icons">
                             <IconButton decl={editIconDecl} />
+                            <IconButton decl={deleteIconDecl} />
                             {isActive && <IconButton decl={windowIconDecl} />}
                         </div>
                     </ExpandableMenuItemRightElement>
@@ -255,6 +284,7 @@ const WorkspaceSwitcherItem = ({
                     onColorChange={(color) => setWorkspace({ ...workspace, color })}
                     onIconChange={(icon) => setWorkspace({ ...workspace, icon })}
                     onDeleteWorkspace={() => onDeleteWorkspace(workspace.oid)}
+                    onSubmit={() => setEditingWorkspace(null)}
                 />
             </ExpandableMenuItem>
         </ExpandableMenuItemGroup>

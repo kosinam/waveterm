@@ -44,6 +44,7 @@ const WorkspaceElem = memo(() => {
     const tabId = useAtomValue(atoms.staticTabId);
     const ws = useAtomValue(atoms.workspace);
     const tabBarPosition = useAtomValue(getSettingsKeyAtom("app:tabbar")) ?? "top";
+    const hideWidgetPanel = useAtomValue(getSettingsKeyAtom("app:hidewidgetpanel"));
     const showLeftTabBar = tabBarPosition === "left";
     const aiPanelVisible = useAtomValue(workspaceLayoutModel.panelVisibleAtom);
     const windowWidth = window.innerWidth;
@@ -158,7 +159,7 @@ const WorkspaceElem = memo(() => {
                             ) : (
                                 <div className="flex flex-row h-full">
                                     <TabContent key={tabId} tabId={tabId} noTopPadding={showLeftTabBar && isMacOS()} />
-                                    <Widgets />
+                                    {!hideWidgetPanel && <Widgets />}
                                 </div>
                             )}
                         </Panel>

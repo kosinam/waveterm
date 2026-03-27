@@ -31,6 +31,7 @@ import { useEffect, useRef } from "react";
 import { DndProvider } from "react-dnd";
 import { HTML5Backend } from "react-dnd-html5-backend";
 import { AppBackground } from "./app-bg";
+import { BottomBar } from "./bottombar/bottombar";
 import { CenteredDiv } from "./element/quickelems";
 
 import "./app.scss";
@@ -386,6 +387,7 @@ const AppInner = () => {
             <DndProvider backend={HTML5Backend}>
                 <Workspace />
             </DndProvider>
+            <BottomBar />
         </div>
     );
 };

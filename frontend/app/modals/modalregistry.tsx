@@ -9,12 +9,14 @@ import { DeleteFileModal, PublishAppModal, RenameFileModal } from "@/builder/bui
 import { SetSecretDialog } from "@/builder/tabs/builder-secrettab";
 import { AboutModal } from "./about";
 import { UserInputModal } from "./userinputmodal";
+import { WorkspacePickerModal } from "./workspacepickermodal";
 
 const modalRegistry: { [key: string]: React.ComponentType<any> } = {
     [NewInstallOnboardingModal.displayName || "NewInstallOnboardingModal"]: NewInstallOnboardingModal,
     [UpgradeOnboardingModal.displayName || "UpgradeOnboardingModal"]: UpgradeOnboardingModal,
     [UpgradeOnboardingPatch.displayName || "UpgradeOnboardingPatch"]: UpgradeOnboardingPatch,
     [UserInputModal.displayName || "UserInputModal"]: UserInputModal,
+    [WorkspacePickerModal.displayName || "WorkspacePickerModal"]: WorkspacePickerModal,
     [AboutModal.displayName || "AboutModal"]: AboutModal,
     [MessageModal.displayName || "MessageModal"]: MessageModal,
     [PublishAppModal.displayName || "PublishAppModal"]: PublishAppModal,

@@ -69,6 +69,7 @@ interface WorkspaceEditorProps {
     onColorChange: (newColor: string) => void;
     onIconChange: (newIcon: string) => void;
     onDeleteWorkspace: () => void;
+    onSubmit?: () => void;
 }
 const WorkspaceEditorComponent = ({
     title,
@@ -79,6 +80,7 @@ const WorkspaceEditorComponent = ({
     onColorChange,
     onIconChange,
     onDeleteWorkspace,
+    onSubmit,
 }: WorkspaceEditorProps) => {
     const inputRef = useRef<HTMLInputElement>(null);
 
@@ -107,6 +109,11 @@ const WorkspaceEditorComponent = ({
                 ref={inputRef}
                 className={clsx("py-[3px]", { error: title === "" })}
                 onChange={onTitleChange}
+                onKeyDown={(e) => {
+                    if (e.key === "Enter" && title !== "") {
+                        onSubmit?.();
+                    }
+                }}
                 value={title}
                 autoFocus
                 autoSelect

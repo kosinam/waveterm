@@ -50,14 +50,14 @@
             .line {
                 height: 100%;
                 width: calc(50% + 1px);
-                border-right: 2px solid var(--accent-color);
+                border-right: 2px solid var(--block-border-color);
             }
         }
         &.flex-column {
             cursor: ns-resize;
             .line {
                 height: calc(50% + 1px);
-                border-bottom: 2px solid var(--accent-color);
+                border-bottom: 2px solid var(--block-border-color);
             }
         }
         &:hover .line {
@@ -80,7 +80,7 @@
         }
 
         &.resizing {
-            border: 1px solid var(--accent-color);
+            border: 1px solid var(--block-border-color);
             backdrop-filter: blur(8px);
         }
 

@@ -21,13 +21,17 @@ import {
     replaceBlock,
     WOS,
 } from "@/app/store/global";
+import { openWorkspaceEditorForCurrentAtom } from "@/app/tab/workspaceswitcher";
 import { getActiveTabModel } from "@/app/store/tab-model";
 import { WorkspaceLayoutModel } from "@/app/workspace/workspace-layout-model";
-import { deleteLayoutModelForTab, getLayoutModelForStaticTab, NavigateDirection } from "@/layout/index";
+import { deleteLayoutModelForTab, getLayoutModelForStaticTab, LayoutTreeActionType, NavigateDirection } from "@/layout/index";
 import * as keyutil from "@/util/keyutil";
 import { isWindows } from "@/util/platformutil";
 import { CHORD_TIMEOUT } from "@/util/sharedconst";
-import { fireAndForget } from "@/util/util";
+import { bottomBarRequestAtom } from "@/app/bottombar/bottombar";
+import { RpcApi } from "@/app/store/wshclientapi";
+import { TabRpcClient } from "@/app/store/wshrpcutil";
+import { fireAndForget, stringToBase64 } from "@/util/util";
 import * as jotai from "jotai";
 import { modalsModel } from "./modalmodel";
 import { isBuilderWindow, isTabWindow } from "./windowtype";
@@ -240,6 +244,22 @@ function switchBlockByBlockNum(index: number) {
     }, 10);
 }
 
+function swapPaneByOffset(offset: number) {
+    const layoutModel = getLayoutModelForStaticTab();
+    const focusedNode = globalStore.get(layoutModel.focusedNode);
+    if (focusedNode == null) return;
+    const leafOrder = globalStore.get(layoutModel.leafOrder);
+    if (!leafOrder || leafOrder.length < 2) return;
+    const curIdx = leafOrder.findIndex((entry) => entry.nodeid === focusedNode.id);
+    if (curIdx === -1) return;
+    const newIdx = (curIdx + offset + leafOrder.length) % leafOrder.length;
+    layoutModel.treeReducer({
+        type: LayoutTreeActionType.Swap,
+        node1Id: focusedNode.id,
+        node2Id: leafOrder[newIdx].nodeid,
+    });
+}
+
 function switchBlockInDirection(direction: NavigateDirection) {
     const layoutModel = getLayoutModelForStaticTab();
     const focusType = FocusManager.getInstance().getFocusType();
@@ -427,6 +447,38 @@ function getWebBlockDef(): BlockDef {
     };
 }
 
+function getFileBlockDef(): BlockDef {
+    const layoutModel = getLayoutModelForStaticTab();
+    const focusedNode = globalStore.get(layoutModel.focusedNode);
+    const blockId = focusedNode?.data?.blockId;
+    const meta: Record<string, unknown> = { view: "preview" };
+    if (blockId != null) {
+        const blockAtom = WOS.getWaveObjectAtom<Block>(WOS.makeORef("block", blockId));
+        const blockData = globalStore.get(blockAtom);
+        if (blockData?.meta?.["cmd:cwd"] != null) {
+            meta.file = blockData.meta["cmd:cwd"];
+        }
+        if (blockData?.meta?.connection != null) {
+            meta.connection = blockData.meta.connection;
+        }
+    }
+    return { meta };
+}
+
+async function handleSplitFiles(position: "before" | "after", direction: "horizontal" | "vertical") {
+    const layoutModel = getLayoutModelForStaticTab();
+    const focusedNode = globalStore.get(layoutModel.focusedNode);
+    if (focusedNode == null) {
+        return;
+    }
+    const blockDef = getFileBlockDef();
+    if (direction === "horizontal") {
+        await createBlockSplitHorizontally(blockDef, focusedNode.data.blockId, position);
+    } else {
+        await createBlockSplitVertically(blockDef, focusedNode.data.blockId, position);
+    }
+}
+
 async function handleSplitHorizontalWeb(position: "before" | "after") {
     const layoutModel = getLayoutModelForStaticTab();
     const focusedNode = globalStore.get(layoutModel.focusedNode);
@@ -443,6 +495,28 @@ async function handleSplitVerticalWeb(position: "before" | "after") {
         return;
     }
     await createBlockSplitVertically(getWebBlockDef(), focusedNode.data.blockId, position);
+}
+
+function sendWshCommand(command: string) {
+    let termBlockId: string | null = null;
+    const focusedId = getFocusedBlockId();
+    if (focusedId != null) {
+        const bcm = getBlockComponentModel(focusedId);
+        if (bcm?.viewModel?.viewType === "term") {
+            termBlockId = focusedId;
+        }
+    }
+    if (termBlockId == null) {
+        for (const [blockId, bcm] of getAllBlockComponentModels()) {
+            if (bcm?.viewModel?.viewType === "term") {
+                termBlockId = blockId;
+                break;
+            }
+        }
+    }
+    if (termBlockId == null) return;
+    const b64data = stringToBase64("wsh " + command + "\n");
+    fireAndForget(() => RpcApi.ControllerInputCommand(TabRpcClient, { blockid: termBlockId, inputdata64: b64data }));
 }
 
 let lastHandledEvent: KeyboardEvent | null = null;
@@ -782,7 +856,6 @@ function registerGlobalKeys() {
     const allKeys = Array.from(globalKeyMap.keys());
     // special case keys, handled by web view
     allKeys.push("Cmd:l", "Cmd:r", "Cmd:ArrowRight", "Cmd:ArrowLeft", "Cmd:o");
-    getApi().registerGlobalWebviewKeys(allKeys);
 
     const splitBlockKeys = new Map<string, KeyHandler>();
     splitBlockKeys.set("ArrowUp", () => {
@@ -829,6 +902,33 @@ function registerGlobalKeys() {
     });
     ctrlBKeys.set("p", () => {
         switchTab(-1);
+        return true;
+    });
+    // tmux analogue: N — create new session (workspace); tmux has no default binding for this
+    ctrlBKeys.set("N", () => {
+        fireAndForget(async () => {
+            const now = new Date();
+            const pad = (n: number) => String(n).padStart(2, "0");
+            const name = `${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
+            const newWsId = await WorkspaceService.CreateWorkspace(name, "", "", true);
+            if (newWsId) getApi().switchWorkspace(newWsId);
+        });
+        return true;
+    });
+    // tmux convention: X — kill current session (workspace); no tmux default, common custom binding
+    ctrlBKeys.set("X", () => {
+        const workspaceId = globalStore.get(atoms.workspaceId);
+        if (workspaceId) getApi().deleteWorkspace(workspaceId);
+        return true;
+    });
+    // tmux: s — list/switch sessions (workspaces)
+    ctrlBKeys.set("s", () => {
+        modalsModel.pushModal("WorkspacePickerModal");
+        return true;
+    });
+    // tmux: $ — rename current session (workspace)
+    ctrlBKeys.set("Shift:$", () => {
+        globalStore.set(openWorkspaceEditorForCurrentAtom, true);
         return true;
     });
     // tmux: 1-9 — switch to session (workspace) by number
@@ -879,6 +979,30 @@ function registerGlobalKeys() {
         genericClose();
         return true;
     });
+    // tmux: { / } — swap current pane with previous/next pane
+    ctrlBKeys.set("Shift:{", () => {
+        swapPaneByOffset(-1);
+        return true;
+    });
+    ctrlBKeys.set("Shift:}", () => {
+        swapPaneByOffset(1);
+        return true;
+    });
+    // custom: f / F — open file browser pane to the right / below
+    ctrlBKeys.set("f", () => {
+        handleSplitFiles("after", "horizontal");
+        return true;
+    });
+    ctrlBKeys.set("F", () => {
+        handleSplitFiles("after", "vertical");
+        return true;
+    });
+    // custom: w — toggle widget panel
+    ctrlBKeys.set("w", () => {
+        const current = globalStore.get(getSettingsKeyAtom("app:hidewidgetpanel"));
+        fireAndForget(() => RpcApi.SetConfigCommand(TabRpcClient, { "app:hidewidgetpanel": !current }));
+        return true;
+    });
     // custom: b — open a new browser pane to the right
     ctrlBKeys.set("b", () => {
         handleSplitHorizontalWeb("after");
@@ -889,7 +1013,36 @@ function registerGlobalKeys() {
         handleSplitVerticalWeb("after");
         return true;
     });
+    // custom: ? — prompt for a URL and open it in a new browser pane to the right
+    ctrlBKeys.set("Shift:?", () => {
+        const layoutModel = getLayoutModelForStaticTab();
+        const focusedNode = globalStore.get(layoutModel.focusedNode);
+        if (focusedNode == null) return true;
+        const anchorBlockId = focusedNode.data.blockId;
+        globalStore.set(bottomBarRequestAtom, {
+            prompt: "open url:",
+            onSubmit: (url: string) => {
+                fireAndForget(() =>
+                    createBlockSplitHorizontally({ meta: { view: "web", url } }, anchorBlockId, "after")
+                );
+            },
+        });
+        return true;
+    });
+    // custom: : — open bottom bar for direct wsh command entry
+    ctrlBKeys.set("Shift:c{Semicolon}", () => {
+        globalStore.set(bottomBarRequestAtom, {
+            prompt: "wsh:",
+            onSubmit: (command: string) => sendWshCommand(command),
+        });
+        return true;
+    });
     globalChordMap.set("Ctrl:b", ctrlBKeys);
+    const chordTriggerKeys = Array.from(globalChordMap.keys());
+    // Register chord trigger keys for synchronous chord-mode activation in webviews
+    getApi().registerWebviewChordTriggerKeys(chordTriggerKeys);
+    // Merge all global keys and chord trigger keys into one webview intercept list
+    getApi().registerGlobalWebviewKeys([...allKeys, ...chordTriggerKeys]);
 }
 
 function registerBuilderGlobalKeys() {
