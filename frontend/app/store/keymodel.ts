@@ -468,10 +468,12 @@ function appHandleKeyDown(waveEvent: WaveKeyboardEvent): boolean {
     }
     lastHandledEvent = nativeEvent;
     if (activeChord) {
-        console.log("handle activeChord", activeChord);
-        // If we're in chord mode, look for the second key.
-        const chordBindings = globalChordMap.get(activeChord);
-        const [, handler] = checkKeyMap(waveEvent, chordBindings);
+        // Ignore bare modifier keydowns — wait for the actual key
+        const modifierKeys = new Set(["Shift", "Control", "Alt", "Meta", "CapsLock", "NumLock", "ScrollLock"]);
+        if (modifierKeys.has(waveEvent.key)) {
+            return true;
+        }
+        const [, handler] = checkKeyMap(waveEvent, globalChordMap.get(activeChord));
         if (handler) {
             resetChord();
             return handler(waveEvent);
