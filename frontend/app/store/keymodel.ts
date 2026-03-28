@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { WaveAIModel } from "@/app/aipanel/waveai-model";
+import { bottomBarRequestAtom } from "@/app/bottombar/bottombar";
 import { FocusManager } from "@/app/store/focusManager";
-import { WorkspaceService } from "@/app/store/services";
 import {
     atoms,
     createBlock,
@@ -21,16 +21,21 @@ import {
     replaceBlock,
     WOS,
 } from "@/app/store/global";
-import { openWorkspaceEditorForCurrentAtom } from "@/app/tab/workspaceswitcher";
+import { WorkspaceService } from "@/app/store/services";
 import { getActiveTabModel } from "@/app/store/tab-model";
+import { RpcApi } from "@/app/store/wshclientapi";
+import { TabRpcClient } from "@/app/store/wshrpcutil";
+import { openWorkspaceEditorForCurrentAtom } from "@/app/tab/workspaceswitcher";
 import { WorkspaceLayoutModel } from "@/app/workspace/workspace-layout-model";
-import { deleteLayoutModelForTab, getLayoutModelForStaticTab, LayoutTreeActionType, NavigateDirection } from "@/layout/index";
+import {
+    deleteLayoutModelForTab,
+    getLayoutModelForStaticTab,
+    LayoutTreeActionType,
+    NavigateDirection,
+} from "@/layout/index";
 import * as keyutil from "@/util/keyutil";
 import { isWindows } from "@/util/platformutil";
 import { CHORD_TIMEOUT } from "@/util/sharedconst";
-import { bottomBarRequestAtom } from "@/app/bottombar/bottombar";
-import { RpcApi } from "@/app/store/wshclientapi";
-import { TabRpcClient } from "@/app/store/wshrpcutil";
 import { fireAndForget, stringToBase64 } from "@/util/util";
 import * as jotai from "jotai";
 import { modalsModel } from "./modalmodel";
@@ -1035,6 +1040,12 @@ function registerGlobalKeys() {
             prompt: "wsh:",
             onSubmit: (command: string) => sendWshCommand(command),
         });
+        return true;
+    });
+    // custom: a — toggle Wave AI panel
+    ctrlBKeys.set("a", () => {
+        const currentVisible = WorkspaceLayoutModel.getInstance().getAIPanelVisible();
+        WorkspaceLayoutModel.getInstance().setAIPanelVisible(!currentVisible);
         return true;
     });
     globalChordMap.set("Ctrl:b", ctrlBKeys);
