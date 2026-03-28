@@ -509,6 +509,13 @@ export class WebViewModel implements ViewModel {
 
     giveFocus(): boolean {
         console.log("webview giveFocus");
+        const currentUrl = globalStore.get(this.url);
+        const metaUrl = globalStore.get(this.blockAtom)?.meta?.url;
+        const hasLoadedUrl = currentUrl || metaUrl;
+        if (!hasLoadedUrl) {
+            this.urlInputRef.current?.focus();
+            return true;
+        }
         if (this.searchAtoms && globalStore.get(this.searchAtoms.isOpen)) {
             console.log("search is open, not giving focus");
             return true;
