@@ -117,11 +117,11 @@ export class TabClient extends WshClient {
                     bm.setBlockHighlight(null);
                     setTimeout(() => {
                         bm.setBlockHighlight({ blockId, borderOnly: true });
-                        setTimeout(() => bm.setBlockHighlight(null), 300);
-                    }, 150);
-                }, 300);
-            }, 150);
-        }, 300);
+                        setTimeout(() => bm.setBlockHighlight(null), 200);
+                    }, 100);
+                }, 200);
+            }, 100);
+        }, 200);
     }
 
     async handle_getfocusedblockdata(rh: RpcResponseHelper): Promise<FocusedBlockData> {
