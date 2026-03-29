@@ -25,13 +25,21 @@ var agentHookCmd = &cobra.Command{
 	Long: `Process AI agent lifecycle hooks and send agent notifications to the Wave Terminal panel.
 
 Supported agents:
-  claude    Claude Code (https://claude.ai/code)
+  claude      Claude Code (https://claude.ai/code)
+  opencode    opencode (https://opencode.ai) — primary integration via waveterm.js plugin
 
-Supported hook types:
-  stop      Agent turn completed — reads transcript and sends a completion notification
+Supported hook types (claude):
+  stop          Agent turn completed — reads transcript and sends a completion notification
+  notification  Agent notification or question hook
+
+Supported hook types (opencode):
+  event         Process a single opencode event JSON from stdin
 
 Example ~/.claude/settings.json Stop hook:
-  {"type": "command", "command": "wsh agenthook claude stop"}`,
+  {"type": "command", "command": "wsh agenthook claude stop"}
+
+For opencode, use the waveterm.js plugin in ~/.config/opencode/plugins/ instead of
+shell hooks — the plugin receives events directly and calls wsh agentnotify.`,
 }
 
 var agentHookClaudeCmd = &cobra.Command{
@@ -51,9 +59,72 @@ var agentHookClaudeCmd = &cobra.Command{
 	PreRunE: preRunSetupRpcClient,
 }
 
+var agentHookOpencodeCmd = &cobra.Command{
+	Use:   "opencode <hook-type>",
+	Short: "handle opencode hooks",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		switch args[0] {
+		case "event":
+			return agentHookOpencodeEventRun(cmd, args)
+		default:
+			return fmt.Errorf("unsupported hook type %q (supported: event)", args[0])
+		}
+	},
+	PreRunE: preRunSetupRpcClient,
+}
+
+// opencodeEventInput is the JSON structure for a single opencode event.
+type opencodeEventInput struct {
+	Type       string             `json:"type"`
+	Properties opencodeEventProps `json:"properties"`
+}
+
+type opencodeEventProps struct {
+	SessionID string `json:"sessionID"`
+	Info      struct {
+		Title string `json:"title"`
+	} `json:"info"`
+	Error struct {
+		Message string `json:"message"`
+	} `json:"error"`
+}
+
+func agentHookOpencodeEventRun(cmd *cobra.Command, args []string) (rtnErr error) {
+	defer func() {
+		sendActivity("agenthook-opencode-event", rtnErr == nil)
+	}()
+
+	stdinData, err := io.ReadAll(WrappedStdin)
+	if err != nil {
+		return fmt.Errorf("reading stdin: %v", err)
+	}
+
+	var ev opencodeEventInput
+	if err := json.Unmarshal(stdinData, &ev); err != nil {
+		return fmt.Errorf("parsing opencode event JSON: %v", err)
+	}
+
+	cwd := os.Getenv("PWD")
+
+	switch ev.Type {
+	case "session.idle":
+		return sendHookNotification("Session complete", cwd, "completion")
+	case "session.error":
+		msg := ev.Properties.Error.Message
+		if msg == "" {
+			msg = "Session error"
+		}
+		return sendHookNotification(truncate(strings.Join(strings.Fields(msg), " "), 300), cwd, "error")
+	default:
+		return fmt.Errorf("unsupported opencode event type %q (supported: session.idle, session.error)", ev.Type)
+	}
+}
+
 func init() {
 	rootCmd.AddCommand(agentHookCmd)
 	agentHookCmd.AddCommand(agentHookClaudeCmd)
+	agentHookCmd.AddCommand(agentHookOpencodeCmd)
 }
 
 // claudeHookInput is the JSON structure Claude Code sends on stdin for all hooks.

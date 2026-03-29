@@ -38,6 +38,7 @@ var (
 	agentNotifyWorktree string
 	agentNotifyBeep     bool
 	agentNotifyTitle    string
+	agentNotifyNotifyId string
 )
 
 func init() {
@@ -48,6 +49,7 @@ func init() {
 	agentNotifyCmd.Flags().StringVar(&agentNotifyWorktree, "worktree", "", "git worktree root path")
 	agentNotifyCmd.Flags().BoolVar(&agentNotifyBeep, "beep", false, "play system bell sound")
 	agentNotifyCmd.Flags().StringVar(&agentNotifyTitle, "title", "", "also send an OS desktop notification with this title")
+	agentNotifyCmd.Flags().StringVar(&agentNotifyNotifyId, "notifyid", "", "stable notification ID for upsert (overrides block ORef and random UUID)")
 }
 
 func agentNotifyRun(cmd *cobra.Command, args []string) (rtnErr error) {
@@ -68,12 +70,16 @@ func agentNotifyRun(cmd *cobra.Command, args []string) (rtnErr error) {
 		orefStr = oref.String()
 	}
 
-	// Use the block ORef as a deterministic notifyid so repeated calls from the
-	// same pane overwrite the previous notification. Fall back to a random UUID
-	// when there is no block context (e.g. called outside of a wave terminal).
+	// Determine a stable notifyid for upsert behavior (same ID = panel entry is updated
+	// rather than duplicated). Three-tier precedence:
+	//   1. --notifyid flag (caller-supplied, e.g. opencode session ID)
+	//   2. Block ORef (existing behavior: same wave pane overwrites its notification)
+	//   3. Random UUID fallback
 	var notifyId string
 	var err error
-	if orefStr != "" {
+	if agentNotifyNotifyId != "" {
+		notifyId = agentNotifyNotifyId
+	} else if orefStr != "" {
 		notifyId = orefStr
 	} else {
 		var id uuid.UUID

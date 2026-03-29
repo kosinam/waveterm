@@ -1,8 +1,11 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+import { BlockModel } from "@/app/block/block-model";
+import { atoms } from "@/app/store/global";
 import { RpcApi } from "@/app/store/wshclientapi";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
+import { getLayoutModelForStaticTab } from "@/layout/index";
 import { fireAndForget } from "@/util/util";
 import { atom, PrimitiveAtom } from "jotai";
 import { globalStore } from "./jotaiStore";
@@ -49,6 +52,28 @@ export function markAgentNotificationRead(notifyId: string): void {
         saveReadIdsToStorage(next);
         return next;
     });
+}
+
+// Flash the originating block's border (double-flash) if it is visible in the current tab.
+function flashBlockIfVisible(notification: AgentNotification): void {
+    if (!notification.oref) return;
+    const blockId = notification.oref.split(":")[1];
+    if (!blockId) return;
+    const currentWorkspaceId = globalStore.get(atoms.workspaceId);
+    if (notification.workspaceid && notification.workspaceid !== currentWorkspaceId) return;
+    const layoutModel = getLayoutModelForStaticTab();
+    if (!layoutModel) return;
+    const node = layoutModel.getNodeByBlockId(blockId);
+    if (!node) return;
+    const bm = BlockModel.getInstance();
+    bm.setBlockHighlight({ blockId, borderOnly: true });
+    setTimeout(() => {
+        bm.setBlockHighlight(null);
+        setTimeout(() => {
+            bm.setBlockHighlight({ blockId, borderOnly: true });
+            setTimeout(() => bm.setBlockHighlight(null), 300);
+        }, 150);
+    }, 300);
 }
 
 export function setupAgentNotifySubscription(): void {
@@ -100,6 +125,7 @@ export function setupAgentNotifySubscription(): void {
                 }
                 return [incoming, ...prev];
             });
+            flashBlockIfVisible(incoming);
         },
     });
 }
