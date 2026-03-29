@@ -54,7 +54,7 @@ export function markAgentNotificationRead(notifyId: string): void {
     });
 }
 
-// Flash the originating block's border (double-flash) if it is visible in the current tab.
+// Flash the originating block's border (triple-flash) if it is visible in the current tab.
 function flashBlockIfVisible(notification: AgentNotification): void {
     if (!notification.oref) return;
     const blockId = notification.oref.split(":")[1];
@@ -71,7 +71,13 @@ function flashBlockIfVisible(notification: AgentNotification): void {
         bm.setBlockHighlight(null);
         setTimeout(() => {
             bm.setBlockHighlight({ blockId, borderOnly: true });
-            setTimeout(() => bm.setBlockHighlight(null), 300);
+            setTimeout(() => {
+                bm.setBlockHighlight(null);
+                setTimeout(() => {
+                    bm.setBlockHighlight({ blockId, borderOnly: true });
+                    setTimeout(() => bm.setBlockHighlight(null), 300);
+                }, 150);
+            }, 300);
         }, 150);
     }, 300);
 }
