@@ -87,6 +87,7 @@ declare global {
         tabid: string;
         workspaceid: string;
         windowid: string;
+        agent?: string;
         status: string;
         message: string;
         workdir?: string;

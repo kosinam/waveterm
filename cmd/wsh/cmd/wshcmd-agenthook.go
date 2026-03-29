@@ -109,13 +109,13 @@ func agentHookOpencodeEventRun(cmd *cobra.Command, args []string) (rtnErr error)
 
 	switch ev.Type {
 	case "session.idle":
-		return sendHookNotification("Session complete", cwd, "completion")
+		return sendHookNotificationForAgent("Session complete", cwd, "completion", "opencode")
 	case "session.error":
 		msg := ev.Properties.Error.Message
 		if msg == "" {
 			msg = "Session error"
 		}
-		return sendHookNotification(truncate(strings.Join(strings.Fields(msg), " "), 300), cwd, "error")
+		return sendHookNotificationForAgent(truncate(strings.Join(strings.Fields(msg), " "), 300), cwd, "error", "opencode")
 	default:
 		return fmt.Errorf("unsupported opencode event type %q (supported: session.idle, session.error)", ev.Type)
 	}
@@ -261,8 +261,12 @@ func runGitCmd(dir string, args ...string) string {
 	return strings.TrimSpace(string(out))
 }
 
-// sendHookNotification sends a completion AgentNotification.
+// sendHookNotification sends an AgentNotification for Claude Code hooks.
 func sendHookNotification(message, cwd, status string) error {
+	return sendHookNotificationForAgent(message, cwd, status, "claude")
+}
+
+func sendHookNotificationForAgent(message, cwd, status, agent string) error {
 	if message == "" {
 		message = "done"
 	}
@@ -295,6 +299,7 @@ func sendHookNotification(message, cwd, status string) error {
 	notification := baseds.AgentNotification{
 		NotifyId: notifyId,
 		ORef:     orefStr,
+		Agent:    agent,
 		Status:   status,
 		Message:  message,
 		WorkDir:  workDir,

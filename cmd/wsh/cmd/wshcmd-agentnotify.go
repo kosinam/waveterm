@@ -39,6 +39,7 @@ var (
 	agentNotifyBeep     bool
 	agentNotifyTitle    string
 	agentNotifyNotifyId string
+	agentNotifyAgent    string
 )
 
 func init() {
@@ -50,6 +51,7 @@ func init() {
 	agentNotifyCmd.Flags().BoolVar(&agentNotifyBeep, "beep", false, "play system bell sound")
 	agentNotifyCmd.Flags().StringVar(&agentNotifyTitle, "title", "", "also send an OS desktop notification with this title")
 	agentNotifyCmd.Flags().StringVar(&agentNotifyNotifyId, "notifyid", "", "stable notification ID for upsert (overrides block ORef and random UUID)")
+	agentNotifyCmd.Flags().StringVar(&agentNotifyAgent, "agent", "", "agent executable name shown in notification (e.g. claude, opencode)")
 }
 
 func agentNotifyRun(cmd *cobra.Command, args []string) (rtnErr error) {
@@ -93,6 +95,7 @@ func agentNotifyRun(cmd *cobra.Command, args []string) (rtnErr error) {
 	notification := baseds.AgentNotification{
 		NotifyId: notifyId,
 		ORef:     orefStr,
+		Agent:    agentNotifyAgent,
 		Status:   agentNotifyStatus,
 		Message:  message,
 		WorkDir:  workDir,

@@ -96,8 +96,14 @@ export const AgentNotifyItem = memo(({ notification, isRead, onNavigate, getStat
                 </button>
             </div>
 
-            {/* Metadata row: branch, workdir */}
+            {/* Metadata row: agent, branch, workdir */}
             <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 pl-[18px]">
+                {notification.agent && (
+                    <span className={cn("flex items-center gap-0.5 text-[10px] min-w-0", isRead ? "text-secondary/60" : "text-white/70")}>
+                        <i className="fa-solid fa-terminal shrink-0" style={{ fontSize: "9px" }} />
+                        <span className="truncate">{notification.agent}</span>
+                    </span>
+                )}
                 {notification.branch && (
                     <span className={cn("flex items-center gap-0.5 text-[10px] min-w-0 max-w-full", isRead ? "text-secondary/60" : "text-white/70")}>
                         <i className="fa-solid fa-code-branch shrink-0" style={{ fontSize: "9px" }} />

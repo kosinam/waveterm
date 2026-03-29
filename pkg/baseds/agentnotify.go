@@ -11,6 +11,7 @@ type AgentNotification struct {
 	TabId       string `json:"tabid"`                 // tab containing the block
 	WorkspaceId string `json:"workspaceid"`            // workspace oid
 	WindowId    string `json:"windowid"`              // window oid (filled by backend)
+	Agent       string `json:"agent,omitempty"`       // agent executable name (e.g. "claude", "opencode")
 	Status      string `json:"status"`                // "completion"|"question"|"waiting"|"error"|"info"
 	Message     string `json:"message"`               // notification text
 	WorkDir     string `json:"workdir,omitempty"`     // working directory
