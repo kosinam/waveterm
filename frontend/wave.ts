@@ -121,15 +121,9 @@ function checkPendingBlockFlash(tabId: string) {
             bm.setBlockHighlight(null);
             setTimeout(() => {
                 bm.setBlockHighlight({ blockId: pending.blockId, borderOnly: true });
-                setTimeout(() => {
-                    bm.setBlockHighlight(null);
-                    setTimeout(() => {
-                        bm.setBlockHighlight({ blockId: pending.blockId, borderOnly: true });
-                        setTimeout(() => bm.setBlockHighlight(null), 225);
-                    }, 112);
-                }, 225);
-            }, 112);
-        }, 225);
+                setTimeout(() => bm.setBlockHighlight(null), 300);
+            }, 150);
+        }, 300);
     }, 100);
 }
 
