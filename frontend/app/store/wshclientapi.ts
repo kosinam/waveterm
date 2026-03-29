@@ -24,6 +24,12 @@ export class RpcApiType {
         return client.wshRpcCall("activity", data, opts);
     }
 
+    // command "agentnotify" [call]
+    AgentNotifyCommand(client: WshClient, data: AgentNotification, opts?: RpcOpts): Promise<void> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "agentnotify", data, opts);
+        return client.wshRpcCall("agentnotify", data, opts);
+    }
+
     // command "aisendmessage" [call]
     AiSendMessageCommand(client: WshClient, data: AiMessageData, opts?: RpcOpts): Promise<void> {
         if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "aisendmessage", data, opts);
@@ -100,6 +106,18 @@ export class RpcApiType {
     CheckGoVersionCommand(client: WshClient, opts?: RpcOpts): Promise<CommandCheckGoVersionRtnData> {
         if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "checkgoversion", null, opts);
         return client.wshRpcCall("checkgoversion", null, opts);
+    }
+
+    // command "clearagentnotification" [call]
+    ClearAgentNotificationCommand(client: WshClient, data: string, opts?: RpcOpts): Promise<void> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "clearagentnotification", data, opts);
+        return client.wshRpcCall("clearagentnotification", data, opts);
+    }
+
+    // command "clearallagentnotifications" [call]
+    ClearAllAgentNotificationsCommand(client: WshClient, opts?: RpcOpts): Promise<void> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "clearallagentnotifications", null, opts);
+        return client.wshRpcCall("clearallagentnotifications", null, opts);
     }
 
     // command "connconnect" [call]
@@ -394,6 +412,12 @@ export class RpcApiType {
     FocusWindowCommand(client: WshClient, data: string, opts?: RpcOpts): Promise<void> {
         if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "focuswindow", data, opts);
         return client.wshRpcCall("focuswindow", data, opts);
+    }
+
+    // command "getallagentnotifications" [call]
+    GetAllAgentNotificationsCommand(client: WshClient, opts?: RpcOpts): Promise<AgentNotification[]> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "getallagentnotifications", null, opts);
+        return client.wshRpcCall("getallagentnotifications", null, opts);
     }
 
     // command "getallbadges" [call]

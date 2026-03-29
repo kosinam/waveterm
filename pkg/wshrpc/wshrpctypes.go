@@ -98,6 +98,10 @@ type WshRpcInterface interface {
 	UpdateTabNameCommand(ctx context.Context, tabId string, newName string) error
 	UpdateWorkspaceTabIdsCommand(ctx context.Context, workspaceId string, tabIds []string) error
 	GetAllBadgesCommand(ctx context.Context) ([]baseds.BadgeEvent, error)
+	AgentNotifyCommand(ctx context.Context, data baseds.AgentNotification) error
+	GetAllAgentNotificationsCommand(ctx context.Context) ([]baseds.AgentNotification, error)
+	ClearAgentNotificationCommand(ctx context.Context, notifyId string) error
+	ClearAllAgentNotificationsCommand(ctx context.Context) error
 
 	// connection functions
 	ConnStatusCommand(ctx context.Context) ([]ConnStatus, error)

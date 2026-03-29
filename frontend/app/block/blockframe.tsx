@@ -71,7 +71,7 @@ const BlockMask = React.memo(({ nodeModel }: { nodeModel: NodeModel }) => {
                 <div className="bignum">{blockNum}</div>
             </div>
         );
-    } else if (blockHighlight) {
+    } else if (blockHighlight && !blockHighlight.borderOnly) {
         showBlockMask = true;
         const iconClass = makeIconClass(blockHighlight.icon, false);
         innerElem = (
@@ -83,7 +83,7 @@ const BlockMask = React.memo(({ nodeModel }: { nodeModel: NodeModel }) => {
 
     return (
         <div
-            className={clsx("block-mask", { "show-block-mask": showBlockMask, "bg-blue-500/10": blockHighlight })}
+            className={clsx("block-mask", { "show-block-mask": showBlockMask, "bg-blue-500/10": blockHighlight && !blockHighlight.borderOnly })}
             style={style}
         >
             {innerElem}

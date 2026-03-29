@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { WaveAIModel } from "@/app/aipanel/waveai-model";
+import { BlockModel } from "@/app/block/block-model";
 import { getApi, getBlockComponentModel, getConnStatusAtom, globalStore, WOS } from "@/app/store/global";
 import type { TermViewModel } from "@/app/view/term/term-model";
 import { WorkspaceLayoutModel } from "@/app/workspace/workspace-layout-model";
@@ -104,6 +105,17 @@ export class TabClient extends WshClient {
         }
 
         layoutModel.focusNode(node.id);
+
+        // Double-flash the blue border (runs in this renderer — correct for both same-tab and cross-tab navigation)
+        const bm = BlockModel.getInstance();
+        bm.setBlockHighlight({ blockId, borderOnly: true });
+        setTimeout(() => {
+            bm.setBlockHighlight(null);
+            setTimeout(() => {
+                bm.setBlockHighlight({ blockId, borderOnly: true });
+                setTimeout(() => bm.setBlockHighlight(null), 300);
+            }, 150);
+        }, 300);
     }
 
     async handle_getfocusedblockdata(rh: RpcResponseHelper): Promise<FocusedBlockData> {

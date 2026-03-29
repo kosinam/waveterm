@@ -25,8 +25,16 @@ const VTabBar_DefaultWidth = 220;
 const VTabBar_MinWidth = 110;
 const VTabBar_MaxWidth = 280;
 
+const AgentNotifyPanel_DefaultWidth = 260;
+const AgentNotifyPanel_MinWidth = 160;
+const AgentNotifyPanel_MaxWidth = 420;
+
 function clampVTabWidth(w: number): number {
     return Math.max(VTabBar_MinWidth, Math.min(w, VTabBar_MaxWidth));
+}
+
+function clampAgentNotifyWidth(w: number): number {
+    return Math.max(AgentNotifyPanel_MinWidth, Math.min(w, AgentNotifyPanel_MaxWidth));
 }
 
 function clampAIPanelWidth(w: number, windowWidth: number): number {
@@ -40,26 +48,32 @@ class WorkspaceLayoutModel {
 
     aiPanelRef: ImperativePanelHandle | null;
     vtabPanelRef: ImperativePanelHandle | null;
+    agentNotifyPanelRef: ImperativePanelHandle | null;
     outerPanelGroupRef: ImperativePanelGroupHandle | null;
     innerPanelGroupRef: ImperativePanelGroupHandle | null;
     panelContainerRef: HTMLDivElement | null;
     aiPanelWrapperRef: HTMLDivElement | null;
     vtabPanelWrapperRef: HTMLDivElement | null;
     panelVisibleAtom: jotai.PrimitiveAtom<boolean>;
+    agentNotifyPanelVisibleAtom: jotai.PrimitiveAtom<boolean>;
 
     private inResize: boolean;
     private aiPanelVisible: boolean;
     private aiPanelWidth: number | null;
     private vtabWidth: number;
     private vtabVisible: boolean;
+    private agentNotifyPanelVisible: boolean;
+    private agentNotifyPanelWidth: number;
     private transitionTimeoutRef: NodeJS.Timeout | null = null;
     private focusTimeoutRef: NodeJS.Timeout | null = null;
     private debouncedPersistAIWidth: () => void;
     private debouncedPersistVTabWidth: () => void;
+    private debouncedPersistAgentNotifyWidth: () => void;
 
     private constructor() {
         this.aiPanelRef = null;
         this.vtabPanelRef = null;
+        this.agentNotifyPanelRef = null;
         this.outerPanelGroupRef = null;
         this.innerPanelGroupRef = null;
         this.panelContainerRef = null;
@@ -70,7 +84,10 @@ class WorkspaceLayoutModel {
         this.aiPanelWidth = null;
         this.vtabWidth = VTabBar_DefaultWidth;
         this.vtabVisible = false;
+        this.agentNotifyPanelVisible = true;
+        this.agentNotifyPanelWidth = AgentNotifyPanel_DefaultWidth;
         this.panelVisibleAtom = jotai.atom(false);
+        this.agentNotifyPanelVisibleAtom = jotai.atom(true);
         this.initializeFromMeta();
 
         this.handleWindowResize = this.handleWindowResize.bind(this);
@@ -104,6 +121,18 @@ class WorkspaceLayoutModel {
                 console.warn("Failed to persist vtabbar width:", e);
             }
         }, 300);
+
+        this.debouncedPersistAgentNotifyWidth = debounce(() => {
+            if (!this.agentNotifyPanelVisible) return;
+            try {
+                RpcApi.SetMetaCommand(TabRpcClient, {
+                    oref: WOS.makeORef("workspace", this.getWorkspaceId()),
+                    meta: { "layout:agentnotifypanelwidth": this.agentNotifyPanelWidth },
+                });
+            } catch (e) {
+                console.warn("Failed to persist agent notify panel width:", e);
+            }
+        }, 300);
     }
 
     static getInstance(): WorkspaceLayoutModel {
@@ -135,11 +164,21 @@ class WorkspaceLayoutModel {
         return getOrefMetaKeyAtom(WOS.makeORef("workspace", this.getWorkspaceId()), "layout:vtabbarwidth");
     }
 
+    private getAgentNotifyPanelOpenAtom(): jotai.Atom<boolean> {
+        return getOrefMetaKeyAtom(WOS.makeORef("workspace", this.getWorkspaceId()), "layout:agentnotifypanelopen");
+    }
+
+    private getAgentNotifyPanelWidthAtom(): jotai.Atom<number> {
+        return getOrefMetaKeyAtom(WOS.makeORef("workspace", this.getWorkspaceId()), "layout:agentnotifypanelwidth");
+    }
+
     private initializeFromMeta(): void {
         try {
             const savedVisible = globalStore.get(this.getPanelOpenAtom());
             const savedAIWidth = globalStore.get(this.getPanelWidthAtom());
             const savedVTabWidth = globalStore.get(this.getVTabBarWidthAtom());
+            const savedAgentNotifyVisible = globalStore.get(this.getAgentNotifyPanelOpenAtom());
+            const savedAgentNotifyWidth = globalStore.get(this.getAgentNotifyPanelWidthAtom());
             if (savedVisible != null) {
                 this.aiPanelVisible = savedVisible;
                 globalStore.set(this.panelVisibleAtom, savedVisible);
@@ -150,6 +189,13 @@ class WorkspaceLayoutModel {
             if (savedVTabWidth != null && savedVTabWidth > 0) {
                 this.vtabWidth = savedVTabWidth;
             }
+            if (savedAgentNotifyVisible != null) {
+                this.agentNotifyPanelVisible = savedAgentNotifyVisible;
+                globalStore.set(this.agentNotifyPanelVisibleAtom, savedAgentNotifyVisible);
+            }
+            if (savedAgentNotifyWidth != null && savedAgentNotifyWidth > 0) {
+                this.agentNotifyPanelWidth = clampAgentNotifyWidth(savedAgentNotifyWidth);
+            }
             const tabBarPosition = globalStore.get(getSettingsKeyAtom("app:tabbar")) ?? "top";
             const showLeftTabBar = tabBarPosition === "left" && !isBuilderWindow();
             this.vtabVisible = showLeftTabBar;
@@ -159,6 +205,10 @@ class WorkspaceLayoutModel {
     }
 
     // ---- Resolved width getters (always clamped) ----
+
+    private getResolvedAgentNotifyWidth(): number {
+        return clampAgentNotifyWidth(this.agentNotifyPanelWidth);
+    }
 
     private getResolvedAIWidth(windowWidth: number): number {
         let w = this.aiPanelWidth;
@@ -179,13 +229,15 @@ class WorkspaceLayoutModel {
     // and produces the two percentage arrays for the panel groups.
 
     private computeLayout(windowWidth: number): { outer: number[]; inner: number[] } {
+        const agentNotifyW = this.agentNotifyPanelVisible ? this.getResolvedAgentNotifyWidth() : 0;
         const vtabW = this.vtabVisible ? this.getResolvedVTabWidth() : 0;
         const aiW = this.aiPanelVisible ? this.getResolvedAIWidth(windowWidth) : 0;
         const leftGroupW = vtabW + aiW;
 
-        // outer: [leftGroupPct, contentPct]
+        // outer: [agentNotifyPct, leftGroupPct, contentPct]
+        const agentNotifyPct = windowWidth > 0 ? (agentNotifyW / windowWidth) * 100 : 0;
         const leftPct = windowWidth > 0 ? (leftGroupW / windowWidth) * 100 : 0;
-        const contentPct = Math.max(0, 100 - leftPct);
+        const contentPct = Math.max(0, 100 - agentNotifyPct - leftPct);
 
         // inner: [vtabPct, aiPanelPct] relative to leftGroupW
         let vtabPct: number;
@@ -198,7 +250,7 @@ class WorkspaceLayoutModel {
             aiPct = 50;
         }
 
-        return { outer: [leftPct, contentPct], inner: [vtabPct, aiPct] };
+        return { outer: [agentNotifyPct, leftPct, contentPct], inner: [vtabPct, aiPct] };
     }
 
     private commitLayouts(windowWidth: number): void {
@@ -218,7 +270,15 @@ class WorkspaceLayoutModel {
     handleOuterPanelLayout(sizes: number[]): void {
         if (this.inResize) return;
         const windowWidth = window.innerWidth;
-        const newLeftGroupPx = (sizes[0] / 100) * windowWidth;
+        // sizes: [agentNotifyPct, leftGroupPct, contentPct]
+        const newAgentNotifyPx = (sizes[0] / 100) * windowWidth;
+        const newLeftGroupPx = (sizes[1] / 100) * windowWidth;
+
+        // Update agent notify width if it was resized
+        if (this.agentNotifyPanelVisible && newAgentNotifyPx > 0) {
+            this.agentNotifyPanelWidth = clampAgentNotifyWidth(newAgentNotifyPx);
+            this.debouncedPersistAgentNotifyWidth();
+        }
 
         if (this.vtabVisible && this.aiPanelVisible) {
             // vtab stays constant, aipanel absorbs the change
@@ -312,6 +372,13 @@ class WorkspaceLayoutModel {
                 this.vtabPanelRef.collapse();
             }
         }
+        if (this.agentNotifyPanelRef) {
+            if (this.agentNotifyPanelVisible) {
+                this.agentNotifyPanelRef.expand();
+            } else {
+                this.agentNotifyPanelRef.collapse();
+            }
+        }
     }
 
     // ---- Transitions ----
@@ -342,6 +409,14 @@ class WorkspaceLayoutModel {
         this.aiPanelWrapperRef.style.width = `${width}px`;
     }
 
+    // ---- Registration for agent notify panel ----
+
+    registerAgentNotifyPanelRef(ref: ImperativePanelHandle | null): void {
+        this.agentNotifyPanelRef = ref;
+        this.syncPanelCollapse();
+        this.commitLayouts(window.innerWidth);
+    }
+
     // ---- Public getters ----
 
     getAIPanelVisible(): boolean {
@@ -350,6 +425,10 @@ class WorkspaceLayoutModel {
 
     getAIPanelWidth(): number {
         return this.getResolvedAIWidth(window.innerWidth);
+    }
+
+    getAgentNotifyPanelVisible(): boolean {
+        return this.agentNotifyPanelVisible;
     }
 
     // ---- Initial percentage helpers (used by workspace.tsx for defaultSize) ----
@@ -367,6 +446,11 @@ class WorkspaceLayoutModel {
         const total = vtabW + aiW;
         if (total === 0) return 50;
         return (vtabW / total) * 100;
+    }
+
+    getAgentNotifyPanelInitialPercentage(windowWidth: number): number {
+        if (!this.agentNotifyPanelVisible) return 0;
+        return (this.getResolvedAgentNotifyWidth() / windowWidth) * 100;
     }
 
     getInnerAIPanelInitialPercentage(windowWidth: number, showLeftTabBar: boolean): number {
@@ -418,6 +502,22 @@ class WorkspaceLayoutModel {
                 refocusNode(blockId);
             }
         }
+    }
+
+    setAgentNotifyPanelVisible(visible: boolean): void {
+        this.agentNotifyPanelVisible = visible;
+        globalStore.set(this.agentNotifyPanelVisibleAtom, visible);
+        try {
+            RpcApi.SetMetaCommand(TabRpcClient, {
+                oref: WOS.makeORef("workspace", this.getWorkspaceId()),
+                meta: { "layout:agentnotifypanelopen": visible },
+            });
+        } catch (e) {
+            console.warn("Failed to persist agent notify panel visibility:", e);
+        }
+        this.enableTransitions(250);
+        this.syncPanelCollapse();
+        this.commitLayouts(window.innerWidth);
     }
 
     setShowLeftTabBar(showLeftTabBar: boolean): void {

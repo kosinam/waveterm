@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { AIPanel } from "@/app/aipanel/aipanel";
+import { AgentNotifyPanel } from "@/app/agentnotifypanel/agentnotifypanel";
 import { ErrorBoundary } from "@/app/element/errorboundary";
 import { CenteredDiv } from "@/app/element/quickelems";
 import { ModalsRenderer } from "@/app/modals/modalsrenderer";
@@ -47,7 +48,9 @@ const WorkspaceElem = memo(() => {
     const hideWidgetPanel = useAtomValue(getSettingsKeyAtom("app:hidewidgetpanel"));
     const showLeftTabBar = tabBarPosition === "left";
     const aiPanelVisible = useAtomValue(workspaceLayoutModel.panelVisibleAtom);
+    const agentNotifyPanelVisible = useAtomValue(workspaceLayoutModel.agentNotifyPanelVisibleAtom);
     const windowWidth = window.innerWidth;
+    const agentNotifyInitialPct = workspaceLayoutModel.getAgentNotifyPanelInitialPercentage(windowWidth);
     const leftGroupInitialPct = workspaceLayoutModel.getLeftGroupInitialPercentage(windowWidth, showLeftTabBar);
     const innerVTabInitialPct = workspaceLayoutModel.getInnerVTabInitialPercentage(windowWidth, showLeftTabBar);
     const innerAIPanelInitialPct = workspaceLayoutModel.getInnerAIPanelInitialPercentage(windowWidth, showLeftTabBar);
@@ -55,6 +58,7 @@ const WorkspaceElem = memo(() => {
     const innerPanelGroupRef = useRef<ImperativePanelGroupHandle>(null);
     const aiPanelRef = useRef<ImperativePanelHandle>(null);
     const vtabPanelRef = useRef<ImperativePanelHandle>(null);
+    const agentNotifyPanelRef = useRef<ImperativePanelHandle>(null);
     const panelContainerRef = useRef<HTMLDivElement>(null);
     const aiPanelWrapperRef = useRef<HTMLDivElement>(null);
     const vtabPanelWrapperRef = useRef<HTMLDivElement>(null);
@@ -97,6 +101,10 @@ const WorkspaceElem = memo(() => {
     }, [showLeftTabBar]);
 
     useEffect(() => {
+        workspaceLayoutModel.registerAgentNotifyPanelRef(agentNotifyPanelRef.current);
+    }, []);
+
+    useEffect(() => {
         const handleFocus = () => workspaceLayoutModel.syncVTabWidthFromMeta();
         window.addEventListener("focus", handleFocus);
         return () => window.removeEventListener("focus", handleFocus);
@@ -106,6 +114,7 @@ const WorkspaceElem = memo(() => {
     const innerHandleClass = `bg-transparent hover:bg-zinc-500/20 transition-colors ${innerHandleVisible ? "w-0.5" : "w-0 pointer-events-none"}`;
     const outerHandleVisible = showLeftTabBar || aiPanelVisible;
     const outerHandleClass = `bg-transparent hover:bg-zinc-500/20 transition-colors ${outerHandleVisible ? "w-0.5" : "w-0 pointer-events-none"}`;
+    const agentNotifyHandleClass = `bg-transparent hover:bg-zinc-500/20 transition-colors ${agentNotifyPanelVisible ? "w-0.5" : "w-0 pointer-events-none"}`;
 
     return (
         <div className="flex flex-col w-full flex-grow overflow-hidden">
@@ -118,7 +127,18 @@ const WorkspaceElem = memo(() => {
                         onLayout={workspaceLayoutModel.handleOuterPanelLayout}
                         ref={outerPanelGroupRef}
                     >
-                        <Panel order={0} defaultSize={leftGroupInitialPct} className="overflow-hidden">
+                        <Panel
+                            ref={agentNotifyPanelRef}
+                            collapsible
+                            order={0}
+                            defaultSize={agentNotifyInitialPct}
+                            minSize={0}
+                            className="overflow-hidden"
+                        >
+                            <AgentNotifyPanel />
+                        </Panel>
+                        <PanelResizeHandle className={agentNotifyHandleClass} />
+                        <Panel order={1} defaultSize={leftGroupInitialPct} minSize={0} collapsible className="overflow-hidden">
                             <PanelGroup
                                 direction="horizontal"
                                 onLayout={workspaceLayoutModel.handleInnerPanelLayout}
@@ -153,7 +173,7 @@ const WorkspaceElem = memo(() => {
                             </PanelGroup>
                         </Panel>
                         <PanelResizeHandle className={outerHandleClass} />
-                        <Panel order={1} defaultSize={100 - leftGroupInitialPct}>
+                        <Panel order={2} defaultSize={100 - agentNotifyInitialPct - leftGroupInitialPct}>
                             {tabId === "" ? (
                                 <CenteredDiv>No Active Tab</CenteredDiv>
                             ) : (

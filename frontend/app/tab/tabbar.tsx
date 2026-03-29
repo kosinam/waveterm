@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { Tooltip } from "@/app/element/tooltip";
+import { agentUnreadCountAtom } from "@/app/store/agentnotify";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
 import { useWaveEnv } from "@/app/waveenv/waveenv";
 import { WorkspaceLayoutModel } from "@/app/workspace/workspace-layout-model";
@@ -75,6 +76,37 @@ const WaveAIButton = memo(({ divRef }: { divRef?: React.RefObject<HTMLDivElement
     );
 });
 WaveAIButton.displayName = "WaveAIButton";
+
+const AgentNotifyButton = memo(() => {
+    const panelOpen = useAtomValue(WorkspaceLayoutModel.getInstance().agentNotifyPanelVisibleAtom);
+    const count = useAtomValue(agentUnreadCountAtom);
+
+    const onClick = () => {
+        WorkspaceLayoutModel.getInstance().setAgentNotifyPanelVisible(!panelOpen);
+    };
+
+    return (
+        <Tooltip
+            content="Toggle Agent Notifications"
+            placement="bottom"
+            hideOnClick
+            divClassName={`relative flex h-[22px] px-3.5 justify-end mb-1 items-center rounded-md mr-1 box-border cursor-pointer bg-hover hover:bg-hoverbg transition-colors text-[12px] ${panelOpen ? "text-accent" : "text-secondary"}`}
+            divStyle={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+            divOnClick={onClick}
+        >
+            <i className={`fa fa-bell ${count > 0 && !panelOpen ? "text-yellow-400" : ""}`} />
+            {count > 0 && (
+                <span
+                    className="absolute -top-0.5 -right-0.5 min-w-[14px] h-[14px] px-0.5 rounded-full bg-red-500 text-white text-[8px] flex items-center justify-center font-bold leading-none"
+                    style={{ fontSize: "8px" }}
+                >
+                    {count > 99 ? "99+" : count}
+                </span>
+            )}
+        </Tooltip>
+    );
+});
+AgentNotifyButton.displayName = "AgentNotifyButton";
 
 function strArrayIsEqual(a: string[], b: string[]) {
     // null check
@@ -602,6 +634,7 @@ const TabBar = memo(({ workspace, noTabs }: TabBarProps) => {
                     <i className="fa fa-ellipsis" />
                 </div>
             )}
+            <AgentNotifyButton />
             <WaveAIButton divRef={waveAIButtonRef} />
             <Tooltip
                 content="Workspace Switcher"
@@ -666,4 +699,4 @@ const TabBar = memo(({ workspace, noTabs }: TabBarProps) => {
     );
 });
 
-export { TabBar, WaveAIButton };
+export { AgentNotifyButton, TabBar, WaveAIButton };

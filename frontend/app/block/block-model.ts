@@ -6,7 +6,8 @@ import * as jotai from "jotai";
 
 export interface BlockHighlightType {
     blockId: string;
-    icon: string;
+    icon?: string;
+    borderOnly?: boolean;
 }
 
 export class BlockModel {

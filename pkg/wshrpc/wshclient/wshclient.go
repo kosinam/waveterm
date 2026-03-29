@@ -23,6 +23,12 @@ func ActivityCommand(w *wshutil.WshRpc, data wshrpc.ActivityUpdate, opts *wshrpc
 	return err
 }
 
+// command "agentnotify", wshserver.AgentNotifyCommand
+func AgentNotifyCommand(w *wshutil.WshRpc, data baseds.AgentNotification, opts *wshrpc.RpcOpts) error {
+	_, err := sendRpcRequestCallHelper[any](w, "agentnotify", data, opts)
+	return err
+}
+
 // command "aisendmessage", wshserver.AiSendMessageCommand
 func AiSendMessageCommand(w *wshutil.WshRpc, data wshrpc.AiMessageData, opts *wshrpc.RpcOpts) error {
 	_, err := sendRpcRequestCallHelper[any](w, "aisendmessage", data, opts)
@@ -99,6 +105,18 @@ func CaptureBlockScreenshotCommand(w *wshutil.WshRpc, data wshrpc.CommandCapture
 func CheckGoVersionCommand(w *wshutil.WshRpc, opts *wshrpc.RpcOpts) (*wshrpc.CommandCheckGoVersionRtnData, error) {
 	resp, err := sendRpcRequestCallHelper[*wshrpc.CommandCheckGoVersionRtnData](w, "checkgoversion", nil, opts)
 	return resp, err
+}
+
+// command "clearagentnotification", wshserver.ClearAgentNotificationCommand
+func ClearAgentNotificationCommand(w *wshutil.WshRpc, data string, opts *wshrpc.RpcOpts) error {
+	_, err := sendRpcRequestCallHelper[any](w, "clearagentnotification", data, opts)
+	return err
+}
+
+// command "clearallagentnotifications", wshserver.ClearAllAgentNotificationsCommand
+func ClearAllAgentNotificationsCommand(w *wshutil.WshRpc, opts *wshrpc.RpcOpts) error {
+	_, err := sendRpcRequestCallHelper[any](w, "clearallagentnotifications", nil, opts)
+	return err
 }
 
 // command "connconnect", wshserver.ConnConnectCommand
@@ -392,6 +410,12 @@ func FindGitBashCommand(w *wshutil.WshRpc, data bool, opts *wshrpc.RpcOpts) (str
 func FocusWindowCommand(w *wshutil.WshRpc, data string, opts *wshrpc.RpcOpts) error {
 	_, err := sendRpcRequestCallHelper[any](w, "focuswindow", data, opts)
 	return err
+}
+
+// command "getallagentnotifications", wshserver.GetAllAgentNotificationsCommand
+func GetAllAgentNotificationsCommand(w *wshutil.WshRpc, opts *wshrpc.RpcOpts) ([]baseds.AgentNotification, error) {
+	resp, err := sendRpcRequestCallHelper[[]baseds.AgentNotification](w, "getallagentnotifications", nil, opts)
+	return resp, err
 }
 
 // command "getallbadges", wshserver.GetAllBadgesCommand

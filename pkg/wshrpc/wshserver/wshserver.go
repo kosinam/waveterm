@@ -1476,6 +1476,84 @@ func (ws *WshServer) GetAllBadgesCommand(ctx context.Context) ([]baseds.BadgeEve
 	return wcore.GetAllBadges(), nil
 }
 
+func (ws *WshServer) AgentNotifyCommand(ctx context.Context, data baseds.AgentNotification) error {
+	if data.NotifyId == "" {
+		return fmt.Errorf("notifyid is required")
+	}
+	if data.Timestamp == 0 {
+		data.Timestamp = time.Now().UnixMilli()
+	}
+	// Fill in TabId, WorkspaceId, WindowId from ORef if provided
+	if data.ORef != "" {
+		oref, err := waveobj.ParseORef(data.ORef)
+		if err == nil && oref.OType == waveobj.OType_Block {
+			tabId, err := wstore.DBFindTabForBlockId(ctx, oref.OID)
+			if err == nil {
+				data.TabId = tabId
+				workspaceId, err := wstore.DBFindWorkspaceForTabId(ctx, tabId)
+				if err == nil {
+					data.WorkspaceId = workspaceId
+					if ws, err2 := wstore.DBGet[*waveobj.Workspace](ctx, workspaceId); err2 == nil && ws != nil {
+						data.WorkspaceName = ws.Name
+					}
+					windowId, err := wstore.DBFindWindowForWorkspaceId(ctx, workspaceId)
+					if err == nil {
+						data.WindowId = windowId
+					}
+				}
+			}
+		}
+	}
+	// If a completion would overwrite a recent error (within 10 s), suppress it.
+	// The stop hook fires immediately after an error stop, so the completion message
+	// is not useful — the error is what the user needs to see.
+	if data.Status == "completion" {
+		if existing, ok := wcore.GetAgentNotification(data.NotifyId); ok {
+			if existing.Status == "error" && data.Timestamp-existing.Timestamp <= 10000 {
+				return nil
+			}
+		}
+	}
+	event := wps.WaveEvent{
+		Event: wps.Event_AgentNotify,
+		Data: baseds.AgentNotifyEvent{
+			Notification: &data,
+		},
+	}
+	wps.Broker.Publish(event)
+	return nil
+}
+
+func (ws *WshServer) GetAllAgentNotificationsCommand(ctx context.Context) ([]baseds.AgentNotification, error) {
+	return wcore.GetAllAgentNotifications(), nil
+}
+
+func (ws *WshServer) ClearAgentNotificationCommand(ctx context.Context, notifyId string) error {
+	if notifyId == "" {
+		return fmt.Errorf("notifyid is required")
+	}
+	event := wps.WaveEvent{
+		Event: wps.Event_AgentNotify,
+		Data: baseds.AgentNotifyEvent{
+			Clear:    true,
+			NotifyId: notifyId,
+		},
+	}
+	wps.Broker.Publish(event)
+	return nil
+}
+
+func (ws *WshServer) ClearAllAgentNotificationsCommand(ctx context.Context) error {
+	event := wps.WaveEvent{
+		Event: wps.Event_AgentNotify,
+		Data: baseds.AgentNotifyEvent{
+			ClearAll: true,
+		},
+	}
+	wps.Broker.Publish(event)
+	return nil
+}
+
 func (ws *WshServer) GetSecretsCommand(ctx context.Context, names []string) (map[string]string, error) {
 	result := make(map[string]string)
 	for _, name := range names {

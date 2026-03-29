@@ -3,6 +3,8 @@
 
 import { App } from "@/app/app";
 import { loadMonaco } from "@/app/monaco/monaco-env";
+import { loadAgentNotifications, reloadReadIds } from "@/app/store/agentnotify";
+import { BlockModel } from "@/app/block/block-model";
 import { loadBadges } from "@/app/store/badge";
 import { GlobalModel } from "@/app/store/global-model";
 import {
@@ -95,6 +97,36 @@ async function initWaveWrap(initOpts: WaveInitOpts) {
     }
 }
 
+function checkPendingBlockFlash(tabId: string) {
+    const raw = localStorage.getItem("pendingBlockFlash");
+    if (!raw) return;
+    let pending: { blockId: string; tabId: string };
+    try {
+        pending = JSON.parse(raw);
+    } catch {
+        localStorage.removeItem("pendingBlockFlash");
+        return;
+    }
+    if (pending?.tabId !== tabId) return;
+    localStorage.removeItem("pendingBlockFlash");
+    setTimeout(() => {
+        const layoutModel = getLayoutModelForStaticTab();
+        if (!layoutModel) return;
+        const node = layoutModel.getNodeByBlockId(pending.blockId);
+        if (!node) return;
+        layoutModel.focusNode(node.id);
+        const bm = BlockModel.getInstance();
+        bm.setBlockHighlight({ blockId: pending.blockId, borderOnly: true });
+        setTimeout(() => {
+            bm.setBlockHighlight(null);
+            setTimeout(() => {
+                bm.setBlockHighlight({ blockId: pending.blockId, borderOnly: true });
+                setTimeout(() => bm.setBlockHighlight(null), 300);
+            }, 150);
+        }, 300);
+    }, 100);
+}
+
 async function reinitWave() {
     console.log("Reinit Wave");
     getApi().sendLog("Reinit Wave");
@@ -117,9 +149,11 @@ async function reinitWave() {
     getApi().setWindowInitStatus("wave-ready");
     globalStore.set(atoms.reinitVersion, globalStore.get(atoms.reinitVersion) + 1);
     globalStore.set(atoms.updaterStatusAtom, getApi().getUpdaterStatus());
+    reloadReadIds();
     setTimeout(() => {
         globalRefocus();
     }, 50);
+    checkPendingBlockFlash(savedInitOpts.tabId);
 }
 
 function reloadAllWorkspaceTabs(ws: Workspace) {
@@ -165,6 +199,7 @@ async function initWave(initOpts: WaveInitOpts) {
     try {
         await loadConnStatus();
         await loadBadges();
+        loadAgentNotifications();
         initGlobalWaveEventSubs(initOpts);
         subscribeToConnEvents();
         if (isMacOS()) {
@@ -208,6 +243,7 @@ async function initWave(initOpts: WaveInitOpts) {
     await firstRenderPromise;
     console.log("Wave First Render Done");
     getApi().setWindowInitStatus("wave-ready");
+    checkPendingBlockFlash(initOpts.tabId);
 }
 
 async function initBuilderWrap(initOpts: BuilderInitOpts) {

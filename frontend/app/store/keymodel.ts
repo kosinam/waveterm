@@ -38,6 +38,8 @@ import { isWindows } from "@/util/platformutil";
 import { CHORD_TIMEOUT } from "@/util/sharedconst";
 import { fireAndForget, stringToBase64 } from "@/util/util";
 import * as jotai from "jotai";
+import { navigateToNotification } from "@/app/agentnotifypanel/agentnotifypanel";
+import { agentNotificationsAtom, agentReadIdsAtom } from "@/app/store/agentnotify";
 import { modalsModel } from "./modalmodel";
 import { isBuilderWindow, isTabWindow } from "./windowtype";
 
@@ -1046,6 +1048,26 @@ function registerGlobalKeys() {
     ctrlBKeys.set("a", () => {
         const currentVisible = WorkspaceLayoutModel.getInstance().getAIPanelVisible();
         WorkspaceLayoutModel.getInstance().setAIPanelVisible(!currentVisible);
+        return true;
+    });
+    // custom: I (Shift-I) — toggle Agent Notify panel
+    ctrlBKeys.set("I", () => {
+        const model = WorkspaceLayoutModel.getInstance();
+        model.setAgentNotifyPanelVisible(!model.getAgentNotifyPanelVisible());
+        return true;
+    });
+    // custom: U (Shift-U) — jump to latest unread agent notification (like cmux Cmd+Shift+U)
+    ctrlBKeys.set("U", () => {
+        const notifications = globalStore.get(agentNotificationsAtom);
+        const readIds = globalStore.get(agentReadIdsAtom);
+        const unread = notifications.find((n) => !readIds.has(n.notifyid));
+        if (!unread) return true;
+        // Open the panel if it isn't visible so the user sees the highlight clear.
+        const model = WorkspaceLayoutModel.getInstance();
+        if (!model.getAgentNotifyPanelVisible()) {
+            model.setAgentNotifyPanelVisible(true);
+        }
+        fireAndForget(() => navigateToNotification(unread));
         return true;
     });
     globalChordMap.set("Ctrl:b", ctrlBKeys);

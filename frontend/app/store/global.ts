@@ -29,6 +29,7 @@ import {
 } from "@/util/util";
 import { atom, Atom, PrimitiveAtom, useAtomValue } from "jotai";
 import { setupBadgesSubscription } from "./badge";
+import { setupAgentNotifySubscription } from "./agentnotify";
 import { atoms, blockComponentModelMap, ConnStatusMapAtom, initGlobalAtoms, orefAtomCache } from "./global-atoms";
 import { globalStore } from "./jotaiStore";
 import { modalsModel } from "./modalmodel";
@@ -98,6 +99,7 @@ function initGlobalWaveEventSubs(initOpts: WaveInitOpts) {
         },
     });
     setupBadgesSubscription();
+    setupAgentNotifySubscription();
 }
 
 const blockCache = new Map<string, Map<string, any>>();

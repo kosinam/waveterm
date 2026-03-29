@@ -80,6 +80,30 @@ declare global {
         conn?: {[key: string]: number};
     };
 
+    // baseds.AgentNotification
+    type AgentNotification = {
+        notifyid: string;
+        oref: string;
+        tabid: string;
+        workspaceid: string;
+        windowid: string;
+        status: string;
+        message: string;
+        workdir?: string;
+        branch?: string;
+        worktree?: string;
+        timestamp: number;
+        workspacename?: string;
+    };
+
+    // baseds.AgentNotifyEvent
+    type AgentNotifyEvent = {
+        notification?: AgentNotification;
+        clear?: boolean;
+        clearall?: boolean;
+        notifyid?: string;
+    };
+
     // wshrpc.AiMessageData
     type AiMessageData = {
         message?: string;
@@ -1159,6 +1183,8 @@ declare global {
         "bg:bordercolor"?: string;
         "bg:activebordercolor"?: string;
         "layout:vtabbarwidth"?: number;
+        "layout:agentnotifypanelopen"?: boolean;
+        "layout:agentnotifypanelwidth"?: number;
         "waveai:panelopen"?: boolean;
         "waveai:panelwidth"?: number;
         "waveai:model"?: string;

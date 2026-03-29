@@ -580,6 +580,11 @@ func main() {
 		log.Printf("error initializing badge store: %v\n", err)
 		return
 	}
+	err = wcore.InitAgentNotifyStore()
+	if err != nil {
+		log.Printf("error initializing agent notify store: %v\n", err)
+		return
+	}
 	go func() {
 		defer func() {
 			panichandler.PanicHandler("GetSystemSummary", recover())

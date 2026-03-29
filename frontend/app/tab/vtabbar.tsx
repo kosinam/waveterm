@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { Tooltip } from "@/app/element/tooltip";
+import { agentUnreadCountAtom } from "@/app/store/agentnotify";
 import { getTabBadgeAtom } from "@/app/store/badge";
 import { makeORef } from "@/app/store/wos";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
@@ -47,6 +48,37 @@ const VTabBarAIButton = memo(() => {
 });
 VTabBarAIButton.displayName = "VTabBarAIButton";
 
+const VTabBarAgentNotifyButton = memo(() => {
+    const panelOpen = useAtomValue(WorkspaceLayoutModel.getInstance().agentNotifyPanelVisibleAtom);
+    const count = useAtomValue(agentUnreadCountAtom);
+
+    const onClick = () => {
+        WorkspaceLayoutModel.getInstance().setAgentNotifyPanelVisible(!panelOpen);
+    };
+
+    return (
+        <Tooltip
+            content="Toggle Agent Notifications"
+            placement="bottom"
+            hideOnClick
+            divClassName={`relative flex h-[22px] px-3.5 justify-end mb-1 items-center rounded-md mr-1 box-border cursor-pointer bg-hover hover:bg-hoverbg transition-colors text-[12px] ${panelOpen ? "text-accent" : count > 0 ? "text-yellow-400" : "text-secondary"}`}
+            divStyle={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+            divOnClick={onClick}
+        >
+            <i className="fa fa-bell" />
+            {count > 0 && (
+                <span
+                    className="absolute -top-0.5 -right-0.5 min-w-[14px] h-[14px] px-0.5 rounded-full bg-red-500 text-white flex items-center justify-center font-bold leading-none"
+                    style={{ fontSize: "8px" }}
+                >
+                    {count > 99 ? "99+" : count}
+                </span>
+            )}
+        </Tooltip>
+    );
+});
+VTabBarAgentNotifyButton.displayName = "VTabBarAgentNotifyButton";
+
 const MacOSHeader = memo(() => {
     const env = useWaveEnv<VTabBarEnv>();
     const isFullScreen = useAtomValue(env.atoms.isFullScreen);
@@ -67,6 +99,7 @@ const MacOSHeader = memo(() => {
                 className="flex shrink-0 flex-row flex-wrap items-end px-1 pb-1 pl-2"
                 style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
             >
+                <VTabBarAgentNotifyButton />
                 <VTabBarAIButton />
                 <Tooltip content="Workspace Switcher" placement="bottom" hideOnClick divClassName="flex items-center">
                     <WorkspaceSwitcher />
@@ -319,6 +352,24 @@ export function VTabBar({ workspace, className }: VTabBarProps) {
             onContextMenu={handleTabBarContextMenu}
         >
             {env.isMacOS() && <MacOSHeader />}
+            {!env.isMacOS() && (
+                <div
+                    className="flex shrink-0 flex-row flex-wrap items-end px-1 pb-1 pl-2 pt-1"
+                    style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+                >
+                    <VTabBarAgentNotifyButton />
+                    <VTabBarAIButton />
+                    <Tooltip
+                        content="Workspace Switcher"
+                        placement="bottom"
+                        hideOnClick
+                        divClassName="flex items-center"
+                    >
+                        <WorkspaceSwitcher />
+                    </Tooltip>
+                    <UpdateStatusBanner />
+                </div>
+            )}
             <div
                 ref={scrollContainerRef}
                 className="relative flex min-h-0 flex-col overflow-y-auto"
