@@ -2,7 +2,7 @@
 
 > **Original WaveTerm README:** [README.upstream.md](README.upstream.md)
 
-This fork of [WaveTerm](https://github.com/wavetermdev/waveterm) adds cmux-style agent notifications and tmux keybindings
+This is a fork of the amazing [WaveTerm](https://github.com/wavetermdev/waveterm) that adds cmux-style agent notifications and tmux keybindings, vombining best of both worlds on both Mac and Linux (untested on windows). Please note this is a purely vibe-coded prototype not ready for any re-integration into upstream - I am not a front-end developer, just playing around with custom tools at this point.
 
 ![WaveMux screenshot](assets/wavemux-screenshot.png)
 
