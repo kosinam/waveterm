@@ -69,6 +69,19 @@ func (*WshServer) WshServerImpl() {}
 
 var WshServerImpl = WshServer{}
 
+const defaultAgentShellNotificationThresholdMs int64 = 10 * 1000
+
+func getAgentShellNotificationThresholdMs() int64 {
+	thresholdMs := int64(wconfig.GetWatcher().GetFullConfig().Settings.AgentShellNotificationThresholdMs)
+	if thresholdMs < 0 {
+		return 0
+	}
+	if thresholdMs == 0 {
+		return defaultAgentShellNotificationThresholdMs
+	}
+	return thresholdMs
+}
+
 func (ws *WshServer) GetJwtPublicKeyCommand(ctx context.Context) (string, error) {
 	return wavejwt.GetPublicKeyBase64(), nil
 }
@@ -1504,12 +1517,14 @@ func (ws *WshServer) AgentNotifyCommand(ctx context.Context, data baseds.AgentNo
 			}
 		}
 	}
-	// If a completion would overwrite a recent error (within 10 s), suppress it.
+	// If a completion would overwrite a recent error within the configured threshold,
+	// suppress it.
+	shellNotificationThresholdMs := getAgentShellNotificationThresholdMs()
 	// The stop hook fires immediately after an error stop, so the completion message
 	// is not useful — the error is what the user needs to see.
 	if data.Status == "completion" {
 		if existing, ok := wcore.GetAgentNotification(data.NotifyId); ok {
-			if existing.Status == "error" && data.Timestamp-existing.Timestamp <= 10000 {
+			if existing.Status == "error" && data.Timestamp-existing.Timestamp <= shellNotificationThresholdMs {
 				return nil
 			}
 		}

@@ -71,6 +71,9 @@ type SettingsType struct {
 	AppFocusFollowsCursor         string `json:"app:focusfollowscursor,omitempty" jsonschema:"enum=off,enum=on,enum=term"`
 	AppTabBar                     string `json:"app:tabbar,omitempty" jsonschema:"enum=top,enum=left"`
 
+	AgentClearReadAfterMs             float64 `json:"agent:clearreadafterms,omitempty"`
+	AgentShellNotificationThresholdMs float64 `json:"agent:shellnotificationthresholdms,omitempty"`
+
 	FeatureWaveAppBuilder bool `json:"feature:waveappbuilder,omitempty"`
 
 	AiClear         bool    `json:"ai:*,omitempty"`

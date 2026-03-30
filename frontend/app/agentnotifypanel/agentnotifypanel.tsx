@@ -11,6 +11,10 @@ import { useAtomValue } from "jotai";
 import { memo, useCallback } from "react";
 import { AgentNotifyItem } from "./agentnotifyitem";
 
+type NavigateToNotificationOpts = {
+    markRead?: boolean;
+};
+
 function getStatusIcon(status: string): { icon: string; color: string } {
     switch (status) {
         case "completion":
@@ -26,9 +30,11 @@ function getStatusIcon(status: string): { icon: string; color: string } {
     }
 }
 
-async function navigateToNotification(notification: AgentNotification) {
+async function navigateToNotification(notification: AgentNotification, opts?: NavigateToNotificationOpts) {
     if (!notification) return;
-    markAgentNotificationRead(notification.notifyid);
+    if (opts?.markRead ?? true) {
+        markAgentNotificationRead(notification.notifyid);
+    }
 
     const blockId = notification.oref ? notification.oref.split(":")[1] : null;
 
@@ -77,7 +83,7 @@ export const AgentNotifyPanel = memo(() => {
     const readIds = useAtomValue(agentReadIdsAtom);
 
     const handleNavigate = useCallback((n: AgentNotification) => {
-        fireAndForget(() => navigateToNotification(n));
+        fireAndForget(() => navigateToNotification(n, { markRead: true }));
     }, []);
 
     const handleClearAll = useCallback(() => {
@@ -114,15 +120,17 @@ export const AgentNotifyPanel = memo(() => {
                         </span>
                     </div>
                 ) : (
-                    notifications.map((n) => (
-                        <AgentNotifyItem
-                            key={n.notifyid}
-                            notification={n}
-                            isRead={readIds.has(n.notifyid)}
-                            onNavigate={handleNavigate}
-                            getStatusIcon={getStatusIcon}
-                        />
-                    ))
+                    <div className="flex flex-col gap-1 p-1">
+                        {notifications.map((n) => (
+                            <AgentNotifyItem
+                                key={n.notifyid}
+                                notification={n}
+                                isRead={readIds.has(n.notifyid)}
+                                onNavigate={handleNavigate}
+                                getStatusIcon={getStatusIcon}
+                            />
+                        ))}
+                    </div>
                 )}
             </div>
         </div>

@@ -53,6 +53,12 @@
             "left"
           ]
         },
+        "agent:clearreadafterms": {
+          "type": "number"
+        },
+        "agent:shellnotificationthresholdms": {
+          "type": "number"
+        },
         "feature:waveappbuilder": {
           "type": "boolean"
         },

@@ -53,9 +53,11 @@ let globalKeybindingsDisabled = false;
 // track current chord state and timeout (for resetting)
 let activeChord: string | null = null;
 let chordTimeout: NodeJS.Timeout = null;
+let lastUnreadNotificationJumpId: string | null = null;
 
 function resetChord() {
     activeChord = null;
+    (window as any).__waveActiveChord = null;
     if (chordTimeout) {
         clearTimeout(chordTimeout);
         chordTimeout = null;
@@ -68,6 +70,7 @@ function setActiveChord(activeChordArg: string) {
         clearTimeout(chordTimeout);
     }
     activeChord = activeChordArg;
+    (window as any).__waveActiveChord = activeChordArg;
     chordTimeout = setTimeout(() => resetChord(), CHORD_TIMEOUT);
 }
 
@@ -1056,18 +1059,26 @@ function registerGlobalKeys() {
         model.setAgentNotifyPanelVisible(!model.getAgentNotifyPanelVisible());
         return true;
     });
-    // custom: U (Shift-U) — jump to latest unread agent notification (like cmux Cmd+Shift+U)
+    // custom: U (Shift-U) — jump to the oldest unread agent notification first
     ctrlBKeys.set("U", () => {
         const notifications = globalStore.get(agentNotificationsAtom);
         const readIds = globalStore.get(agentReadIdsAtom);
-        const unread = notifications.find((n) => !readIds.has(n.notifyid));
+        const unreadNotifications = notifications.filter((n) => !readIds.has(n.notifyid));
+        if (unreadNotifications.length === 0) {
+            lastUnreadNotificationJumpId = null;
+            return true;
+        }
+        const lastUnreadIdx = unreadNotifications.findIndex((n) => n.notifyid === lastUnreadNotificationJumpId);
+        const nextUnreadIdx = lastUnreadIdx >= 0 ? (lastUnreadIdx + 1) % unreadNotifications.length : 0;
+        const unread = unreadNotifications[nextUnreadIdx];
         if (!unread) return true;
+        lastUnreadNotificationJumpId = unread.notifyid;
         // Open the panel if it isn't visible so the user sees the highlight clear.
         const model = WorkspaceLayoutModel.getInstance();
         if (!model.getAgentNotifyPanelVisible()) {
             model.setAgentNotifyPanelVisible(true);
         }
-        fireAndForget(() => navigateToNotification(unread));
+        fireAndForget(() => navigateToNotification(unread, { markRead: false }));
         return true;
     });
     globalChordMap.set("Ctrl:b", ctrlBKeys);

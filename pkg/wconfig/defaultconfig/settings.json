@@ -10,6 +10,8 @@
     "app:disablectrlshiftarrows": false,
     "app:disablectrlshiftdisplay": false,
     "app:focusfollowscursor": "off",
+    "agent:clearreadafterms": 300000,
+    "agent:shellnotificationthresholdms": 10000,
     "autoupdate:enabled": true,
     "autoupdate:installonquit": true,
     "autoupdate:intervalms": 3600000,

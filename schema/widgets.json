@@ -139,6 +139,12 @@
               },
               "type": "array"
             },
+            "term:ignoredprocesses": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
             "term:scrollback": {
               "type": "integer"
             },

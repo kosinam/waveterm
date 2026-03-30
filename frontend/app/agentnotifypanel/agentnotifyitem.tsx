@@ -65,7 +65,7 @@ export const AgentNotifyItem = memo(({ notification, isRead, onNavigate, getStat
     return (
         <div
             className={cn(
-                "group relative flex flex-col gap-0.5 px-2 py-2 border-b border-border/20 cursor-pointer transition-colors",
+                "group relative flex flex-col gap-0.5 px-2 py-2 rounded-md border border-border/20 cursor-pointer transition-colors",
                 isRead ? "hover:bg-hoverbg" : unreadBg
             )}
             onClick={handleClick}

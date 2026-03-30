@@ -11,10 +11,43 @@ import { atom, PrimitiveAtom } from "jotai";
 import { globalStore } from "./jotaiStore";
 import { waveEventSubscribeSingle } from "./wps";
 
-// Sorted list of all agent notifications, newest first.
+// Sorted list of all agent notifications, oldest first.
 export const agentNotificationsAtom: PrimitiveAtom<AgentNotification[]> = atom([] as AgentNotification[]);
 
 const readIdsStorageKey = "agentNotifyReadIds";
+const defaultAgentReadPruneAgeMs = 5 * 60 * 1000;
+const agentReadPruneCheckIntervalMs = 60 * 1000;
+const agentReadPruneAgeKey: keyof SettingsType = "agent:clearreadafterms";
+const pendingPruneIds = new Set<string>();
+
+let agentReadPruneInterval: number | null = null;
+
+function areAgentNotificationsEqual(a: AgentNotification, b: AgentNotification): boolean {
+    return (
+        a.notifyid === b.notifyid &&
+        a.oref === b.oref &&
+        a.tabid === b.tabid &&
+        a.workspaceid === b.workspaceid &&
+        a.windowid === b.windowid &&
+        a.agent === b.agent &&
+        a.status === b.status &&
+        a.message === b.message &&
+        a.workdir === b.workdir &&
+        a.branch === b.branch &&
+        a.worktree === b.worktree &&
+        a.timestamp === b.timestamp &&
+        a.workspacename === b.workspacename
+    );
+}
+
+function sortAgentNotifications(notifications: AgentNotification[]): AgentNotification[] {
+    return [...notifications].sort((a, b) => {
+        if (a.timestamp !== b.timestamp) {
+            return a.timestamp - b.timestamp;
+        }
+        return a.notifyid.localeCompare(b.notifyid);
+    });
+}
 
 function loadReadIdsFromStorage(): Set<string> {
     try {
@@ -52,6 +85,7 @@ export function markAgentNotificationRead(notifyId: string): void {
         saveReadIdsToStorage(next);
         return next;
     });
+    pruneReadAgentNotifications();
 }
 
 function clearAgentNotificationReadState(notifyId: string): void {
@@ -70,6 +104,7 @@ function getEventBlockId(target: EventTarget | null): string | null {
 }
 
 function isMeaningfulTypingKey(event: KeyboardEvent): boolean {
+    if ((window as any).__waveActiveChord) return false;
     if (event.defaultPrevented || event.isComposing) return false;
     if (event.ctrlKey || event.metaKey || event.altKey) return false;
     if (event.key.length === 1) return true;
@@ -111,13 +146,60 @@ function flashBlockIfVisible(notification: AgentNotification): void {
     }, 300);
 }
 
+function getAgentReadPruneAgeMs(): number {
+    const configuredValue = globalStore.get(atoms.settingsAtom)?.[agentReadPruneAgeKey];
+    if (typeof configuredValue !== "number" || !Number.isFinite(configuredValue)) {
+        return defaultAgentReadPruneAgeMs;
+    }
+    return configuredValue;
+}
+
+function pruneReadAgentNotifications(): void {
+    const pruneAgeMs = getAgentReadPruneAgeMs();
+    if (pruneAgeMs < 0) return;
+
+    const now = Date.now();
+    const notifications = globalStore.get(agentNotificationsAtom);
+    const readIds = globalStore.get(agentReadIdsAtom);
+    for (const notification of notifications) {
+        if (!readIds.has(notification.notifyid)) continue;
+        if (!(notification.timestamp > 0)) continue;
+        if (now - notification.timestamp < pruneAgeMs) continue;
+        if (pendingPruneIds.has(notification.notifyid)) continue;
+
+        pendingPruneIds.add(notification.notifyid);
+        fireAndForget(async () => {
+            try {
+                await RpcApi.ClearAgentNotificationCommand(TabRpcClient, notification.notifyid);
+            } finally {
+                pendingPruneIds.delete(notification.notifyid);
+            }
+        });
+    }
+}
+
 export function setupAgentNotifySubscription(): void {
+    if (agentReadPruneInterval == null) {
+        pruneReadAgentNotifications();
+        agentReadPruneInterval = window.setInterval(pruneReadAgentNotifications, agentReadPruneCheckIntervalMs);
+    }
+
+    const refreshReadIdsFromStorage = () => {
+        globalStore.set(agentReadIdsAtom, loadReadIdsFromStorage());
+        pruneReadAgentNotifications();
+    };
+
     // Sync read IDs across renderers: when another renderer marks a notification as read,
     // this renderer gets a storage event and updates its atom immediately.
     window.addEventListener("storage", (event) => {
         if (event.key === readIdsStorageKey) {
-            const newIds = event.newValue ? new Set<string>(JSON.parse(event.newValue)) : new Set<string>();
-            globalStore.set(agentReadIdsAtom, newIds);
+            refreshReadIdsFromStorage();
+        }
+    });
+    window.addEventListener("focus", refreshReadIdsFromStorage);
+    document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "visible") {
+            refreshReadIdsFromStorage();
         }
     });
 
@@ -154,28 +236,34 @@ export function setupAgentNotifySubscription(): void {
                 globalStore.set(agentNotificationsAtom, []);
                 globalStore.set(agentReadIdsAtom, new Set<string>());
                 saveReadIdsToStorage(new Set<string>());
+                pendingPruneIds.clear();
                 return;
             }
             if (data.clear && data.notifyid) {
                 globalStore.set(agentNotificationsAtom, (prev) => prev.filter((n) => n.notifyid !== data.notifyid));
                 clearAgentNotificationReadState(data.notifyid);
+                pendingPruneIds.delete(data.notifyid);
                 return;
             }
             if (data.notification == null) return;
 
             const incoming = data.notification;
-            clearAgentNotificationReadState(incoming.notifyid);
+            const existing = globalStore.get(agentNotificationsAtom).find((n) => n.notifyid === incoming.notifyid);
+            if (existing == null || !areAgentNotificationsEqual(existing, incoming)) {
+                clearAgentNotificationReadState(incoming.notifyid);
+            }
             globalStore.set(agentNotificationsAtom, (prev) => {
-                // Replace if same notifyid (updated status), otherwise prepend
+                // Replace if same notifyid (updated status), otherwise insert and keep oldest-first order
                 const existing = prev.findIndex((n) => n.notifyid === incoming.notifyid);
                 if (existing >= 0) {
                     const next = [...prev];
                     next[existing] = incoming;
-                    return next;
+                    return sortAgentNotifications(next);
                 }
-                return [incoming, ...prev];
+                return sortAgentNotifications([...prev, incoming]);
             });
             flashBlockIfVisible(incoming);
+            pruneReadAgentNotifications();
         },
     });
 }
@@ -184,9 +272,8 @@ export async function loadAgentNotifications(): Promise<void> {
     try {
         const notifications = await RpcApi.GetAllAgentNotificationsCommand(TabRpcClient);
         if (notifications == null) return;
-        // Sort newest first by timestamp
-        const sorted = [...notifications].sort((a, b) => b.timestamp - a.timestamp);
-        globalStore.set(agentNotificationsAtom, sorted);
+        globalStore.set(agentNotificationsAtom, sortAgentNotifications(notifications));
+        pruneReadAgentNotifications();
     } catch (_) {
         // Non-fatal — panel will be empty on load failure
     }

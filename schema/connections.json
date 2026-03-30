@@ -39,6 +39,12 @@
         "term:durable": {
           "type": "boolean"
         },
+        "term:ignoredprocesses": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
         "cmd:env": {
           "additionalProperties": {
             "type": "string"

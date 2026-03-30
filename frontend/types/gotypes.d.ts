@@ -1411,6 +1411,8 @@ declare global {
         "app:disablectrlshiftdisplay"?: boolean;
         "app:focusfollowscursor"?: string;
         "app:tabbar"?: string;
+        "agent:clearreadafterms"?: number;
+        "agent:shellnotificationthresholdms"?: number;
         "feature:waveappbuilder"?: boolean;
         "ai:*"?: boolean;
         "ai:preset"?: string;
