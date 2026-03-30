@@ -18,9 +18,10 @@ func TestClassifyCodexStopStatus(t *testing.T) {
 	}{
 		{name: "empty", message: "", want: ""},
 		{name: "completion", message: "Implemented the change and updated the tests.", want: "completion"},
-		{name: "question", message: "I need your approval before I can continue.", want: "question"},
-		{name: "question choices", message: "Do you want me to run a networked command that requires approval, like installing dependencies or pulling remote data? 1. Install dependencies 2. Pull latest git refs 3. Run a command that needs broader system access Reply with a number or describe the command.", want: "question"},
-		{name: "error", message: "The build failed because the file does not exist.", want: "error"},
+		{name: "mentions error handling", message: "Implemented the change and fixed the error handling path.", want: "completion"},
+		{name: "mentions no errors", message: "No errors found; implementation is complete.", want: "completion"},
+		{name: "mentions prior blocking", message: "Blocked earlier by approval, but the task is now done.", want: "completion"},
+		{name: "mentions failure in summary", message: "The build failed earlier because the file did not exist, but I fixed it and the task is complete.", want: "completion"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

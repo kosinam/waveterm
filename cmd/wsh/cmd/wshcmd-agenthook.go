@@ -617,13 +617,6 @@ func classifyCodexStopStatus(message string) string {
 	if message == "" {
 		return ""
 	}
-	// The stop hook fires when a turn is complete, so question patterns are not
-	// meaningful here — don't mis-classify end-of-turn summary text as approvals.
-	for _, re := range codexErrorTextPatterns {
-		if re.MatchString(message) {
-			return "error"
-		}
-	}
 	return "completion"
 }
 

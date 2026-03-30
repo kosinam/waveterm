@@ -13,6 +13,7 @@ type AgentNotification struct {
 	WindowId    string `json:"windowid"`              // window oid (filled by backend)
 	Agent       string `json:"agent,omitempty"`       // agent executable name (e.g. "claude", "opencode")
 	Status      string `json:"status"`                // "completion"|"question"|"waiting"|"error"|"info"
+	Lifecycle   string `json:"lifecycle,omitempty"`   // "terminal"|"intermediate" (defaults to terminal)
 	Message     string `json:"message"`               // notification text
 	WorkDir     string `json:"workdir,omitempty"`     // working directory
 	Branch      string `json:"branch,omitempty"`      // git branch

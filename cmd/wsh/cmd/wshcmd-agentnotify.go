@@ -40,11 +40,13 @@ var (
 	agentNotifyTitle    string
 	agentNotifyNotifyId string
 	agentNotifyAgent    string
+	agentNotifyLifecycle string
 )
 
 func init() {
 	rootCmd.AddCommand(agentNotifyCmd)
 	agentNotifyCmd.Flags().StringVar(&agentNotifyStatus, "status", "info", "agent status: completion, question, waiting, error, info")
+	agentNotifyCmd.Flags().StringVar(&agentNotifyLifecycle, "lifecycle", "terminal", "notification lifecycle: terminal or intermediate")
 	agentNotifyCmd.Flags().StringVar(&agentNotifyWorkDir, "workdir", "", "working directory (defaults to $PWD)")
 	agentNotifyCmd.Flags().StringVar(&agentNotifyBranch, "branch", "", "current git branch")
 	agentNotifyCmd.Flags().StringVar(&agentNotifyWorktree, "worktree", "", "git worktree root path")
@@ -97,6 +99,7 @@ func agentNotifyRun(cmd *cobra.Command, args []string) (rtnErr error) {
 		ORef:     orefStr,
 		Agent:    agentNotifyAgent,
 		Status:   agentNotifyStatus,
+		Lifecycle: agentNotifyLifecycle,
 		Message:  message,
 		WorkDir:  workDir,
 		Branch:   agentNotifyBranch,

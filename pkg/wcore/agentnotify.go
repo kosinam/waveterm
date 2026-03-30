@@ -18,11 +18,13 @@ import (
 type AgentNotifyStore struct {
 	lock          *sync.Mutex
 	notifications map[string]baseds.AgentNotification // keyed by notifyid
+	pending       map[string]baseds.AgentNotification // keyed by notifyid
 }
 
 var globalAgentNotifyStore = &AgentNotifyStore{
 	lock:          &sync.Mutex{},
 	notifications: make(map[string]baseds.AgentNotification),
+	pending:       make(map[string]baseds.AgentNotification),
 }
 
 // InitAgentNotifyStore subscribes to incoming agent notify events.
@@ -73,10 +75,38 @@ func addAgentNotification(n baseds.AgentNotification) {
 	log.Printf("agent notify store: notification added: id=%s status=%s\n", n.NotifyId, n.Status)
 }
 
+func SetPendingAgentNotification(n baseds.AgentNotification) {
+	if n.NotifyId == "" {
+		return
+	}
+	globalAgentNotifyStore.lock.Lock()
+	defer globalAgentNotifyStore.lock.Unlock()
+	globalAgentNotifyStore.pending[n.NotifyId] = n
+	log.Printf("agent notify store: pending notification stored: id=%s status=%s\n", n.NotifyId, n.Status)
+}
+
+func GetPendingAgentNotification(notifyId string) (baseds.AgentNotification, bool) {
+	globalAgentNotifyStore.lock.Lock()
+	defer globalAgentNotifyStore.lock.Unlock()
+	n, ok := globalAgentNotifyStore.pending[notifyId]
+	return n, ok
+}
+
+func ClearPendingAgentNotification(notifyId string) {
+	if notifyId == "" {
+		return
+	}
+	globalAgentNotifyStore.lock.Lock()
+	defer globalAgentNotifyStore.lock.Unlock()
+	delete(globalAgentNotifyStore.pending, notifyId)
+	log.Printf("agent notify store: pending notification cleared: id=%s\n", notifyId)
+}
+
 func clearAgentNotification(notifyId string) {
 	globalAgentNotifyStore.lock.Lock()
 	defer globalAgentNotifyStore.lock.Unlock()
 	delete(globalAgentNotifyStore.notifications, notifyId)
+	delete(globalAgentNotifyStore.pending, notifyId)
 	log.Printf("agent notify store: notification cleared: id=%s\n", notifyId)
 }
 
@@ -85,6 +115,7 @@ func clearAllAgentNotifications() {
 	defer globalAgentNotifyStore.lock.Unlock()
 	count := len(globalAgentNotifyStore.notifications)
 	globalAgentNotifyStore.notifications = make(map[string]baseds.AgentNotification)
+	globalAgentNotifyStore.pending = make(map[string]baseds.AgentNotification)
 	log.Printf("agent notify store: cleared all %d notifications\n", count)
 }
 

@@ -69,7 +69,7 @@ What each hook does:
 
 - `PostToolUse` watches Bash results and raises an error notification for high-confidence command failures.
 - `UserPromptSubmit` clears the active notification when you respond, so stale question or error states do not stick around.
-- `Stop` sends the final completion notification and can reclassify the turn as a question or error when the final assistant message clearly indicates that state.
+- `Stop` sends the final completion notification for the Codex turn.
 
 ## Optional question detection
 
@@ -96,7 +96,7 @@ This heuristic is intentionally conservative. If you run Codex in a mode that ne
 ## What you will see in Wave
 
 - `completion`: Codex finished a turn and produced a final response
-- `error`: a Bash tool invocation failed, or the final response clearly indicates the task could not be completed
+- `error`: a Bash tool invocation failed
 - `question`: Wave detected that Codex is likely waiting for approval or input
 
 Notifications are keyed to the current Wave terminal block, so clicking one jumps back to the originating block and tab.

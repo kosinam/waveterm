@@ -71,6 +71,11 @@ var WshServerImpl = WshServer{}
 
 const defaultAgentShellNotificationThresholdMs int64 = 10 * 1000
 
+const (
+	agentNotificationLifecycleTerminal     = "terminal"
+	agentNotificationLifecycleIntermediate = "intermediate"
+)
+
 func getAgentShellNotificationThresholdMs() int64 {
 	thresholdMs := int64(wconfig.GetWatcher().GetFullConfig().Settings.AgentShellNotificationThresholdMs)
 	if thresholdMs < 0 {
@@ -1489,6 +1494,35 @@ func (ws *WshServer) GetAllBadgesCommand(ctx context.Context) ([]baseds.BadgeEve
 	return wcore.GetAllBadges(), nil
 }
 
+func normalizeAgentNotificationLifecycle(lifecycle string) string {
+	switch strings.ToLower(strings.TrimSpace(lifecycle)) {
+	case "", agentNotificationLifecycleTerminal:
+		return agentNotificationLifecycleTerminal
+	case agentNotificationLifecycleIntermediate:
+		return agentNotificationLifecycleIntermediate
+	default:
+		return agentNotificationLifecycleTerminal
+	}
+}
+
+func isGenericAgentErrorMessage(message string) bool {
+	normalized := strings.ToLower(strings.Join(strings.Fields(message), " "))
+	switch normalized {
+	case "", "error", "task failed", "session error", "command failed", "bash command failed":
+		return true
+	default:
+		return false
+	}
+}
+
+func finalizeAgentNotification(data baseds.AgentNotification, pending baseds.AgentNotification, hasPending bool) baseds.AgentNotification {
+	data.Lifecycle = normalizeAgentNotificationLifecycle(data.Lifecycle)
+	if data.Status == "error" && hasPending && pending.Message != "" && isGenericAgentErrorMessage(data.Message) {
+		data.Message = pending.Message
+	}
+	return data
+}
+
 func (ws *WshServer) AgentNotifyCommand(ctx context.Context, data baseds.AgentNotification) error {
 	if data.NotifyId == "" {
 		return fmt.Errorf("notifyid is required")
@@ -1517,6 +1551,14 @@ func (ws *WshServer) AgentNotifyCommand(ctx context.Context, data baseds.AgentNo
 			}
 		}
 	}
+	data.Lifecycle = normalizeAgentNotificationLifecycle(data.Lifecycle)
+	if data.Lifecycle == agentNotificationLifecycleIntermediate {
+		wcore.SetPendingAgentNotification(data)
+		return nil
+	}
+	pending, hasPending := wcore.GetPendingAgentNotification(data.NotifyId)
+	data = finalizeAgentNotification(data, pending, hasPending)
+	wcore.ClearPendingAgentNotification(data.NotifyId)
 	// If a completion would overwrite a recent error within the configured threshold,
 	// suppress it.
 	shellNotificationThresholdMs := getAgentShellNotificationThresholdMs()

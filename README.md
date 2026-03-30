@@ -2,7 +2,7 @@
 
 > **Original WaveTerm README:** [README.upstream.md](README.upstream.md)
 
-This is a fork of the amazing [WaveTerm](https://github.com/wavetermdev/waveterm) that adds cmux-style agent notifications and tmux keybindings, combining best of both worlds on Mac, Linux, and Windows (untested). Please note this is a purely vibe-coded prototype not ready for any re-integration into upstream - I am not a front-end developer, just playing around with custom tools at this point.
+This is a fork of the amazing [WaveTerm](https://github.com/wavetermdev/waveterm) that adds cmux-style agent notifications and tmux keybindings, combining best of both worlds on Mac, Linux, and Windows (untested). Please note this is a purely vibe-coded prototype not ready for any PRs for upstream - I am not a front-end developer, just playing around with custom tools at this point.
 
 ![WaveMux screenshot](assets/wavemux-screenshot.png)
 
@@ -245,7 +245,7 @@ Then wire up the hook handlers:
 
 What each hook does:
 
-- `Stop` — sends the final completion notification; reclassifies as `question` or `error` when the final assistant message clearly indicates that state.
+- `Stop` — sends the final completion notification for the Codex turn.
 - `PostToolUse` (Bash matcher) — raises an `error` notification for high-confidence command failures.
 - `UserPromptSubmit` — clears the active notification when you respond, so stale `question` / `error` states do not persist.
 
