@@ -59,6 +59,9 @@
             "left"
           ]
         },
+        "app:blockbordercolor": {
+          "type": "string"
+        },
         "agent:clearreadafterms": {
           "type": "number"
         },

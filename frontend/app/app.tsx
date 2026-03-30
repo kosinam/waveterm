@@ -140,7 +140,9 @@ async function handleContextMenu(e: React.MouseEvent<HTMLDivElement>) {
 
 function AppSettingsUpdater() {
     const windowSettingsAtom = getSettingsPrefixAtom("window");
+    const appSettingsAtom = getSettingsPrefixAtom("app");
     const windowSettings = useAtomValue(windowSettingsAtom);
+    const appSettings = useAtomValue(appSettingsAtom);
     useEffect(() => {
         const isTransparentOrBlur =
             (windowSettings?.["window:transparent"] || windowSettings?.["window:blur"]) ?? false;
@@ -165,6 +167,14 @@ function AppSettingsUpdater() {
             document.body.style.removeProperty("--main-bg-color");
         }
     }, [windowSettings]);
+    useEffect(() => {
+        const blockBorderColor = appSettings?.["app:blockbordercolor"];
+        if (blockBorderColor != null) {
+            document.body.style.setProperty("--block-border-color", blockBorderColor);
+        } else {
+            document.body.style.removeProperty("--block-border-color");
+        }
+    }, [appSettings]);
     return null;
 }
 

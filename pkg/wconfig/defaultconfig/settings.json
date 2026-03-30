@@ -6,6 +6,7 @@
     "app:defaultnewblock": "term",
     "app:chordprefix": "Ctrl:w",
     "app:tabbar": "top",
+    "app:blockbordercolor": "rgb(88, 193, 66)",
     "app:confirmquit": true,
     "app:hideaibutton": false,
     "app:disablectrlshiftarrows": false,

@@ -250,9 +250,24 @@ The wrapper proxies the interactive session through a PTY (so terminal behaviour
 
 ## Miscelaneous enhancements
 
-- CPU usage, memory usage, and 1-minute load average are shown in the right side of the tab bar in fullscreen mode
+- CPU usage, memory usage, and 1-minute load average are shown in the right side of the tab bar in fullscreen mode. Enabled by default; disable with:
+  ```json
+  { "app:fullscreensysstats": false }
+  ```
 - Opening a new browser block automatically focuses the URL input field so you can type an address immediately without an extra click.
-- A new `app:hidewidgetpanel` setting (also toggleable from the tab bar context menu or via Ctrl-w w) lets you permanently hide the right-side widget panel.
+- A new `app:hidewidgetpanel` setting (also toggleable from the tab bar context menu or via Ctrl-w w) lets you permanently hide the right-side widget panel:
+  ```json
+  { "app:hidewidgetpanel": true }
+  ```
 - tmux-like workspace picker via Ctrl-w s
+- The focused block border color is configurable. Default is green; to use something like xmonad-style red:
+  ```json
+  { "app:blockbordercolor": "rgb(160, 30, 30)" }
+  ```
+  Any CSS color value is accepted (`"#ff0000"`, `"red"`, `"hsl(0,100%,50%)"`, etc.).
+- Agent notifications are pruned automatically. Read notifications are cleared after 5 minutes and shell notifications are suppressed if a completion was seen within 10 seconds. Both thresholds are configurable:
+  ```json
+  { "agent:clearreadafterms": 300000, "agent:shellnotificationthresholdms": 10000 }
+  ```
 
 ---

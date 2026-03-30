@@ -1413,6 +1413,7 @@ declare global {
         "app:disablectrlshiftdisplay"?: boolean;
         "app:focusfollowscursor"?: string;
         "app:tabbar"?: string;
+        "app:blockbordercolor"?: string;
         "agent:clearreadafterms"?: number;
         "agent:shellnotificationthresholdms"?: number;
         "feature:waveappbuilder"?: boolean;
