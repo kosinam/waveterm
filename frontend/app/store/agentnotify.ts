@@ -54,6 +54,41 @@ export function markAgentNotificationRead(notifyId: string): void {
     });
 }
 
+function clearAgentNotificationReadState(notifyId: string): void {
+    globalStore.set(agentReadIdsAtom, (prev) => {
+        if (!prev.has(notifyId)) return prev;
+        const next = new Set(prev);
+        next.delete(notifyId);
+        saveReadIdsToStorage(next);
+        return next;
+    });
+}
+
+function getEventBlockId(target: EventTarget | null): string | null {
+    if (!(target instanceof Element)) return null;
+    return target.closest<HTMLElement>("[data-blockid]")?.dataset.blockid ?? null;
+}
+
+function isMeaningfulTypingKey(event: KeyboardEvent): boolean {
+    if (event.defaultPrevented || event.isComposing) return false;
+    if (event.ctrlKey || event.metaKey || event.altKey) return false;
+    if (event.key.length === 1) return true;
+    return event.key === "Enter" || event.key === "Backspace" || event.key === "Delete";
+}
+
+function markUnreadNotificationsReadForBlock(target: EventTarget | null): void {
+    const targetBlockId = getEventBlockId(target);
+    if (!targetBlockId) return;
+    const notifications = globalStore.get(agentNotificationsAtom);
+    const readIds = globalStore.get(agentReadIdsAtom);
+    for (const notification of notifications) {
+        if (readIds.has(notification.notifyid)) continue;
+        const notificationBlockId = notification.oref?.split(":")[1];
+        if (notificationBlockId !== targetBlockId) continue;
+        markAgentNotificationRead(notification.notifyid);
+    }
+}
+
 // Flash the originating block's border (triple-flash) if it is visible in the current tab.
 function flashBlockIfVisible(notification: AgentNotification): void {
     if (!notification.oref) return;
@@ -86,6 +121,29 @@ export function setupAgentNotifySubscription(): void {
         }
     });
 
+    document.addEventListener(
+        "keydown",
+        (event) => {
+            if (!isMeaningfulTypingKey(event)) return;
+            markUnreadNotificationsReadForBlock(event.target);
+        },
+        true
+    );
+    document.addEventListener(
+        "beforeinput",
+        (event) => {
+            markUnreadNotificationsReadForBlock(event.target);
+        },
+        true
+    );
+    document.addEventListener(
+        "paste",
+        (event) => {
+            markUnreadNotificationsReadForBlock(event.target);
+        },
+        true
+    );
+
     waveEventSubscribeSingle({
         eventType: "agent:notify",
         handler: (event) => {
@@ -99,28 +157,20 @@ export function setupAgentNotifySubscription(): void {
                 return;
             }
             if (data.clear && data.notifyid) {
-                globalStore.set(agentNotificationsAtom, (prev) =>
-                    prev.filter((n) => n.notifyid !== data.notifyid)
-                );
+                globalStore.set(agentNotificationsAtom, (prev) => prev.filter((n) => n.notifyid !== data.notifyid));
+                clearAgentNotificationReadState(data.notifyid);
                 return;
             }
             if (data.notification == null) return;
 
             const incoming = data.notification;
+            clearAgentNotificationReadState(incoming.notifyid);
             globalStore.set(agentNotificationsAtom, (prev) => {
                 // Replace if same notifyid (updated status), otherwise prepend
                 const existing = prev.findIndex((n) => n.notifyid === incoming.notifyid);
                 if (existing >= 0) {
                     const next = [...prev];
                     next[existing] = incoming;
-                    // Clear read state so the updated notification shows as unread
-                    globalStore.set(agentReadIdsAtom, (readPrev) => {
-                        if (!readPrev.has(incoming.notifyid)) return readPrev;
-                        const nextRead = new Set(readPrev);
-                        nextRead.delete(incoming.notifyid);
-                        saveReadIdsToStorage(nextRead);
-                        return nextRead;
-                    });
                     return next;
                 }
                 return [incoming, ...prev];

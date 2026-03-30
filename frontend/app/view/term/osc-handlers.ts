@@ -26,6 +26,7 @@ const Osc52MaxRawLength = 128 * 1024; // includes selector + base64 + whitespace
 export type ShellIntegrationStatus = "ready" | "running-command";
 
 const ClaudeCodeRegex = /^claude\b/;
+const CodexRegex = /^codex\b/;
 
 type Osc16162Command =
     | { command: "A"; data: Record<string, never> }
@@ -81,6 +82,11 @@ function checkCommandForTelemetry(decodedCmd: string) {
         return;
     }
 
+    if (CodexRegex.test(normalizedCmd)) {
+        recordTEvent("action:term", { "action:type": "codex" });
+        return;
+    }
+
     const opencodeRegex = /^opencode\b/;
     if (opencodeRegex.test(normalizedCmd)) {
         recordTEvent("action:term", { "action:type": "opencode" });
@@ -93,6 +99,13 @@ export function isClaudeCodeCommand(decodedCmd: string): boolean {
         return false;
     }
     return ClaudeCodeRegex.test(normalizeCmd(decodedCmd));
+}
+
+export function isCodexCommand(decodedCmd: string): boolean {
+    if (!decodedCmd) {
+        return false;
+    }
+    return CodexRegex.test(normalizeCmd(decodedCmd));
 }
 
 function handleShellIntegrationCommandStart(

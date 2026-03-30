@@ -72,7 +72,7 @@ export const AgentNotifyItem = memo(({ notification, isRead, onNavigate, getStat
             <div className="flex items-start gap-1.5">
                 <i
                     className={cn("fa-solid shrink-0 mt-[1px] text-[11px]", icon)}
-                    style={{ color: isCompletion ? "#4ade80" : isQuestion ? color : isRead ? undefined : "rgba(255,255,255,0.85)" }}
+                    style={{ color }}
                 />
                 <span className={cn("text-[11px] leading-tight line-clamp-4 flex-1 min-w-0", isRead ? "text-primary" : "text-white")}>
                     {notification.timestamp > 0 && (

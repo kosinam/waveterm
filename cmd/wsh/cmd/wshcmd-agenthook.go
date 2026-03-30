@@ -5,18 +5,26 @@ package cmd
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
+	"regexp"
+	"strconv"
 	"strings"
+	"sync"
+	"time"
 
+	"github.com/creack/pty"
 	"github.com/google/uuid"
 	"github.com/spf13/cobra"
 	"github.com/wavetermdev/waveterm/pkg/baseds"
 	"github.com/wavetermdev/waveterm/pkg/wshrpc"
 	"github.com/wavetermdev/waveterm/pkg/wshrpc/wshclient"
+	"golang.org/x/term"
 )
 
 var agentHookCmd = &cobra.Command{
@@ -27,6 +35,7 @@ var agentHookCmd = &cobra.Command{
 Supported agents:
   claude      Claude Code (https://claude.ai/code)
   opencode    opencode (https://opencode.ai) — primary integration via waveterm.js plugin
+  codex       Codex CLI (https://developers.openai.com/codex)
 
 Supported hook types (claude):
   stop          Agent turn completed — reads transcript and sends a completion notification
@@ -35,11 +44,21 @@ Supported hook types (claude):
 Supported hook types (opencode):
   event         Process a single opencode event JSON from stdin
 
+Supported hook types (codex):
+  stop            Final assistant response for a Codex session
+  posttooluse     Post-tool hook (currently Bash-focused for error detection)
+  userpromptsubmit Clear the active notification when the user re-engages
+  run             Launch Codex through a Wave PTY proxy for best-effort question detection
+
 Example ~/.claude/settings.json Stop hook:
   {"type": "command", "command": "wsh agenthook claude stop"}
 
 For opencode, use the waveterm.js plugin in ~/.config/opencode/plugins/ instead of
-shell hooks — the plugin receives events directly and calls wsh agentnotify.`,
+shell hooks — the plugin receives events directly and calls wsh agentnotify.
+
+For Codex, enable hooks in ~/.codex/config.toml and point hooks.json commands at
+the codex hook handlers below. Use "wsh agenthook codex run -- codex" if you also
+want best-effort question / approval notifications.`,
 }
 
 var agentHookClaudeCmd = &cobra.Command{
@@ -69,6 +88,27 @@ var agentHookOpencodeCmd = &cobra.Command{
 			return agentHookOpencodeEventRun(cmd, args)
 		default:
 			return fmt.Errorf("unsupported hook type %q (supported: event)", args[0])
+		}
+	},
+	PreRunE: preRunSetupRpcClient,
+}
+
+var agentHookCodexCmd = &cobra.Command{
+	Use:   "codex <hook-type> [command...]",
+	Short: "handle Codex CLI hooks",
+	Args:  cobra.MinimumNArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		switch args[0] {
+		case "stop":
+			return agentHookCodexStopRun(cmd, args)
+		case "posttooluse":
+			return agentHookCodexPostToolUseRun(cmd, args)
+		case "userpromptsubmit":
+			return agentHookCodexUserPromptSubmitRun(cmd, args)
+		case "run":
+			return agentHookCodexRun(cmd, args)
+		default:
+			return fmt.Errorf("unsupported hook type %q (supported: stop, posttooluse, userpromptsubmit, run)", args[0])
 		}
 	},
 	PreRunE: preRunSetupRpcClient,
@@ -125,6 +165,7 @@ func init() {
 	rootCmd.AddCommand(agentHookCmd)
 	agentHookCmd.AddCommand(agentHookClaudeCmd)
 	agentHookCmd.AddCommand(agentHookOpencodeCmd)
+	agentHookCmd.AddCommand(agentHookCodexCmd)
 }
 
 // claudeHookInput is the JSON structure Claude Code sends on stdin for all hooks.
@@ -153,18 +194,98 @@ type claudeContentBlock struct {
 	Text string `json:"text"`
 }
 
-// extractClaudeTranscriptText parses a Claude Code JSONL transcript and returns
+type codexHookInput struct {
+	SessionID            string          `json:"session_id"`
+	Cwd                  string          `json:"cwd"`
+	TranscriptPath       string          `json:"transcript_path"`
+	LastAssistantMessage string          `json:"last_assistant_message"`
+	ToolName             string          `json:"tool_name"`
+	ToolResponse         json.RawMessage `json:"tool_response"`
+}
+
+type codexQuestionDetector struct {
+	mu       sync.Mutex
+	tail     string
+	lastSent time.Time
+}
+
+const (
+	codexNotifyIDEnv            = "WAVE_CODEX_NOTIFYID"
+	codexQuestionNotifyCooldown = 5 * time.Second
+)
+
+var (
+	ansiRegexp            = regexp.MustCompile(`\x1b(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~]|\][^\x07\x1b]*(?:\x07|\x1b\\))`)
+	codexExitCodeRegexp   = regexp.MustCompile(`(?i)\b(?:exit(?:ed)?(?: with)?(?: code)?|status)\s*[:=]?\s*([1-9][0-9]*)\b`)
+	codexQuestionPatterns = []*regexp.Regexp{
+		regexp.MustCompile(`(?i)\bapproval required\b`),
+		regexp.MustCompile(`(?i)\brequires approval\b`),
+		regexp.MustCompile(`(?i)\bwaiting for approval\b`),
+		regexp.MustCompile(`(?i)\bwould you like to run the following command\b`),
+		regexp.MustCompile(`(?i)\bwould you like to allow\b`),
+		regexp.MustCompile(`(?i)\bgrant permission\b`),
+		regexp.MustCompile(`(?i)\bapprove(?: this)?(?: command| action)?\b`),
+		regexp.MustCompile(`(?i)\bpermission (?:required|needed)\b`),
+		regexp.MustCompile(`(?i)\brequest_permissions\b`),
+		regexp.MustCompile(`(?i)\bmcp elicitation\b`),
+		regexp.MustCompile(`(?i)\buser input required\b`),
+		regexp.MustCompile(`(?i)\byes,\s*proceed\b`),
+		regexp.MustCompile(`(?i)\bdon't ask again\b`),
+	}
+	codexQuestionHeadlinePatterns = []*regexp.Regexp{
+		regexp.MustCompile(`(?i)\bapproval required\b`),
+		regexp.MustCompile(`(?i)\brequires approval\b`),
+		regexp.MustCompile(`(?i)\bwaiting for approval\b`),
+		regexp.MustCompile(`(?i)\bwould you like to run the following command\b`),
+		regexp.MustCompile(`(?i)\bwould you like to allow\b`),
+		regexp.MustCompile(`(?i)\bgrant permission\b`),
+		regexp.MustCompile(`(?i)\bapprove(?: this)?(?: command| action)?\b`),
+		regexp.MustCompile(`(?i)\bpermission (?:required|needed)\b`),
+		regexp.MustCompile(`(?i)\brequest_permissions\b`),
+		regexp.MustCompile(`(?i)\bmcp elicitation\b`),
+		regexp.MustCompile(`(?i)\buser input required\b`),
+	}
+	codexQuestionTextPatterns = []*regexp.Regexp{
+		regexp.MustCompile(`(?i)\bneed your approval\b`),
+		regexp.MustCompile(`(?i)\bdo you want me to run\b`),
+		regexp.MustCompile(`(?i)\bdo you want me to\b`),
+		regexp.MustCompile(`(?i)\bplease confirm\b`),
+		regexp.MustCompile(`(?i)\bwhat would you like me to do\b`),
+		regexp.MustCompile(`(?i)\bwhich option\b`),
+		regexp.MustCompile(`(?i)\bhow would you like me to proceed\b`),
+		regexp.MustCompile(`(?i)\bI need your input\b`),
+		regexp.MustCompile(`(?i)\bI need you to answer\b`),
+		regexp.MustCompile(`(?i)\breply with a number\b`),
+		regexp.MustCompile(`(?i)\bdescribe the command\b`),
+	}
+	codexErrorTextPatterns = []*regexp.Regexp{
+		regexp.MustCompile(`(?i)\bfailed\b`),
+		regexp.MustCompile(`(?i)\berror\b`),
+		regexp.MustCompile(`(?i)\bunable to\b`),
+		regexp.MustCompile(`(?i)\bcould not\b`),
+		regexp.MustCompile(`(?i)\bnon-zero exit\b`),
+		regexp.MustCompile(`(?i)\bpermission denied\b`),
+		regexp.MustCompile(`(?i)\bno such file or directory\b`),
+		regexp.MustCompile(`(?i)\bblocked\b`),
+	}
+)
+
+// extractTranscriptText parses a Claude/Codex JSONL transcript and returns
 // the best last-response text from the current turn (messages after the last
 // human/user message). Prefers the last assistant text with len > 20; falls
 // back to last non-empty text; returns "" if nothing useful is found.
-func extractClaudeTranscriptText(path string) string {
+func extractTranscriptText(path string) string {
 	f, err := os.Open(path)
 	if err != nil {
 		return ""
 	}
 	defer f.Close()
 
-	var entries []claudeTranscriptEntry
+	type transcriptEntry struct {
+		role string
+		text string
+	}
+	var entries []transcriptEntry
 	scanner := bufio.NewScanner(f)
 	scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
 	for scanner.Scan() {
@@ -172,17 +293,22 @@ func extractClaudeTranscriptText(path string) string {
 		if line == "" {
 			continue
 		}
-		var entry claudeTranscriptEntry
+		var entry map[string]any
 		if err := json.Unmarshal([]byte(line), &entry); err != nil {
 			continue
 		}
-		entries = append(entries, entry)
+		role := transcriptRole(entry)
+		text := normalizeNotificationMessage(transcriptText(entry))
+		if role == "" && text == "" {
+			continue
+		}
+		entries = append(entries, transcriptEntry{role: role, text: text})
 	}
 
 	// Find the last human/user message to scope the current turn.
 	lastUserIdx := -1
 	for i, e := range entries {
-		if e.Type == "human" || e.Message.Role == "user" {
+		if e.role == "human" || e.role == "user" {
 			lastUserIdx = i
 		}
 	}
@@ -191,13 +317,11 @@ func extractClaudeTranscriptText(path string) string {
 	var texts []string
 	for i := lastUserIdx + 1; i < len(entries); i++ {
 		e := entries[i]
-		if e.Type != "assistant" && e.Message.Role != "assistant" {
+		if e.role != "assistant" {
 			continue
 		}
-		text := extractContentText(e.Message.Content)
-		text = strings.Join(strings.Fields(text), " ") // collapse whitespace
-		if text != "" {
-			texts = append(texts, text)
+		if e.text != "" {
+			texts = append(texts, e.text)
 		}
 	}
 
@@ -215,6 +339,10 @@ func extractClaudeTranscriptText(path string) string {
 	return truncate(texts[len(texts)-1], 300)
 }
 
+func extractClaudeTranscriptText(path string) string {
+	return extractTranscriptText(path)
+}
+
 // extractContentText extracts plain text from a content field that is either a
 // JSON string or an array of content blocks.
 func extractContentText(raw json.RawMessage) string {
@@ -228,16 +356,26 @@ func extractContentText(raw json.RawMessage) string {
 	}
 	// Try array of content blocks.
 	var blocks []claudeContentBlock
-	if err := json.Unmarshal(raw, &blocks); err != nil {
-		return ""
-	}
-	var parts []string
-	for _, b := range blocks {
-		if b.Type == "text" && b.Text != "" {
-			parts = append(parts, b.Text)
+	if err := json.Unmarshal(raw, &blocks); err == nil {
+		var parts []string
+		for _, b := range blocks {
+			if b.Type == "text" && b.Text != "" {
+				parts = append(parts, b.Text)
+			}
+		}
+		if len(parts) > 0 {
+			return strings.Join(parts, " ")
 		}
 	}
-	return strings.Join(parts, " ")
+	var obj map[string]any
+	if err := json.Unmarshal(raw, &obj); err == nil {
+		return transcriptText(obj)
+	}
+	var arr []any
+	if err := json.Unmarshal(raw, &arr); err == nil {
+		return transcriptText(arr)
+	}
+	return ""
 }
 
 func truncate(s string, max int) string {
@@ -246,6 +384,67 @@ func truncate(s string, max int) string {
 		return s
 	}
 	return string(runes[:max])
+}
+
+func normalizeNotificationMessage(s string) string {
+	return truncate(strings.Join(strings.Fields(strings.TrimSpace(s)), " "), 300)
+}
+
+func transcriptRole(entry map[string]any) string {
+	for _, key := range []string{"role", "type"} {
+		if v, ok := entry[key].(string); ok {
+			switch strings.ToLower(strings.TrimSpace(v)) {
+			case "assistant":
+				return "assistant"
+			case "user", "human":
+				return "user"
+			}
+		}
+	}
+	for _, key := range []string{"message", "item", "event", "entry"} {
+		if nested, ok := entry[key].(map[string]any); ok {
+			if role := transcriptRole(nested); role != "" {
+				return role
+			}
+		}
+	}
+	return ""
+}
+
+func transcriptText(v any) string {
+	switch val := v.(type) {
+	case nil:
+		return ""
+	case string:
+		return val
+	case []any:
+		var parts []string
+		for _, item := range val {
+			part := strings.TrimSpace(transcriptText(item))
+			if part != "" {
+				parts = append(parts, part)
+			}
+		}
+		return strings.Join(parts, " ")
+	case map[string]any:
+		for _, key := range []string{"text", "output_text"} {
+			if s, ok := val[key].(string); ok && strings.TrimSpace(s) != "" {
+				return s
+			}
+		}
+		var parts []string
+		for _, key := range []string{"content", "message", "output", "result"} {
+			if sub, ok := val[key]; ok {
+				part := strings.TrimSpace(transcriptText(sub))
+				if part != "" {
+					parts = append(parts, part)
+				}
+			}
+		}
+		return strings.Join(parts, " ")
+	default:
+		return ""
+	}
 }
 
 // runGitCmd runs a git command in the given directory and returns trimmed output.
@@ -267,9 +466,14 @@ func sendHookNotification(message, cwd, status string) error {
 }
 
 func sendHookNotificationForAgent(message, cwd, status, agent string) error {
+	return sendHookNotificationForAgentWithNotifyID(message, cwd, status, agent, "")
+}
+
+func sendHookNotificationForAgentWithNotifyID(message, cwd, status, agent, notifyId string) error {
 	if message == "" {
 		message = "done"
 	}
+	message = normalizeNotificationMessage(message)
 
 	workDir := cwd
 	if workDir == "" {
@@ -285,10 +489,10 @@ func sendHookNotificationForAgent(message, cwd, status, agent string) error {
 		orefStr = oref.String()
 	}
 
-	var notifyId string
-	if orefStr != "" {
+	if notifyId == "" && orefStr != "" {
 		notifyId = orefStr
-	} else {
+	}
+	if notifyId == "" {
 		id, err := uuid.NewV7()
 		if err != nil {
 			return fmt.Errorf("generating notify id: %v", err)
@@ -311,10 +515,24 @@ func sendHookNotificationForAgent(message, cwd, status, agent string) error {
 }
 
 func sendHookNotificationWithBeep(message, cwd, status string) error {
-	if err := sendHookNotification(message, cwd, status); err != nil {
+	if err := sendHookNotificationWithBeepForAgentWithNotifyID(message, cwd, status, "claude", ""); err != nil {
+		return err
+	}
+	return nil
+}
+
+func sendHookNotificationWithBeepForAgentWithNotifyID(message, cwd, status, agent, notifyId string) error {
+	if err := sendHookNotificationForAgentWithNotifyID(message, cwd, status, agent, notifyId); err != nil {
 		return err
 	}
 	return wshclient.ElectronSystemBellCommand(RpcClient, &wshrpc.RpcOpts{Route: "electron"})
+}
+
+func clearHookNotification(notifyID string) error {
+	if notifyID == "" {
+		return nil
+	}
+	return wshclient.ClearAgentNotificationCommand(RpcClient, notifyID, &wshrpc.RpcOpts{NoResponse: true})
 }
 
 // readClaudeHookInput reads and parses the hook payload from stdin.
@@ -358,7 +576,7 @@ func agentHookClaudeStopRun(cmd *cobra.Command, args []string) (rtnErr error) {
 	if len([]rune(message)) > 20 {
 		message = truncate(strings.Join(strings.Fields(message), " "), 300)
 	} else if transcriptPath != "" {
-		message = extractClaudeTranscriptText(transcriptPath)
+		message = extractTranscriptText(transcriptPath)
 	}
 
 	err = sendHookNotification(message, cwd, "completion")
@@ -367,6 +585,414 @@ func agentHookClaudeStopRun(cmd *cobra.Command, args []string) (rtnErr error) {
 	}
 
 	return nil
+}
+
+func readCodexHookInput() (codexHookInput, string, error) {
+	stdinData, err := io.ReadAll(WrappedStdin)
+	if err != nil {
+		return codexHookInput{}, "", fmt.Errorf("reading stdin: %v", err)
+	}
+	var hookInput codexHookInput
+	if len(bytes.TrimSpace(stdinData)) > 0 {
+		if err := json.Unmarshal(stdinData, &hookInput); err != nil {
+			return codexHookInput{}, "", fmt.Errorf("parsing codex hook JSON: %v", err)
+		}
+	}
+	cwd := hookInput.Cwd
+	if cwd == "" {
+		cwd = os.Getenv("PWD")
+	}
+	return hookInput, cwd, nil
+}
+
+func codexNotifyID(sessionID string) string {
+	if notifyID := strings.TrimSpace(os.Getenv(codexNotifyIDEnv)); notifyID != "" {
+		return notifyID
+	}
+	return strings.TrimSpace(sessionID)
+}
+
+func classifyCodexStopStatus(message string) string {
+	message = normalizeNotificationMessage(message)
+	if message == "" {
+		return ""
+	}
+	for _, re := range codexQuestionTextPatterns {
+		if re.MatchString(message) {
+			return "question"
+		}
+	}
+	for _, re := range codexErrorTextPatterns {
+		if re.MatchString(message) {
+			return "error"
+		}
+	}
+	return "completion"
+}
+
+func decodeNestedJSON(value any) any {
+	s, ok := value.(string)
+	if !ok {
+		return value
+	}
+	trimmed := strings.TrimSpace(s)
+	if trimmed == "" {
+		return ""
+	}
+	var nested any
+	if json.Unmarshal([]byte(trimmed), &nested) == nil {
+		return nested
+	}
+	return trimmed
+}
+
+func parseCodexToolResponse(raw json.RawMessage) any {
+	if len(bytes.TrimSpace(raw)) == 0 {
+		return nil
+	}
+	var v any
+	if err := json.Unmarshal(raw, &v); err != nil {
+		return strings.TrimSpace(string(raw))
+	}
+	return decodeNestedJSON(v)
+}
+
+func findNumericField(v any, keys ...string) (int, bool) {
+	switch val := v.(type) {
+	case map[string]any:
+		for _, key := range keys {
+			if field, ok := val[key]; ok {
+				switch n := field.(type) {
+				case float64:
+					return int(n), true
+				case int:
+					return n, true
+				case string:
+					if parsed, err := strconv.Atoi(strings.TrimSpace(n)); err == nil {
+						return parsed, true
+					}
+				}
+			}
+		}
+		for _, field := range val {
+			if n, ok := findNumericField(field, keys...); ok {
+				return n, true
+			}
+		}
+	case []any:
+		for _, field := range val {
+			if n, ok := findNumericField(field, keys...); ok {
+				return n, true
+			}
+		}
+	}
+	return 0, false
+}
+
+func findBoolField(v any, keys ...string) (bool, bool) {
+	switch val := v.(type) {
+	case map[string]any:
+		for _, key := range keys {
+			if field, ok := val[key]; ok {
+				if b, ok := field.(bool); ok {
+					return b, true
+				}
+			}
+		}
+		for _, field := range val {
+			if b, ok := findBoolField(field, keys...); ok {
+				return b, true
+			}
+		}
+	case []any:
+		for _, field := range val {
+			if b, ok := findBoolField(field, keys...); ok {
+				return b, true
+			}
+		}
+	}
+	return false, false
+}
+
+func findStringField(v any, keys ...string) string {
+	switch val := v.(type) {
+	case string:
+		return normalizeNotificationMessage(val)
+	case map[string]any:
+		for _, key := range keys {
+			if field, ok := val[key]; ok {
+				if s := findStringField(field); s != "" {
+					return s
+				}
+			}
+		}
+		for _, field := range val {
+			if s := findStringField(field, keys...); s != "" {
+				return s
+			}
+		}
+	case []any:
+		for _, field := range val {
+			if s := findStringField(field, keys...); s != "" {
+				return s
+			}
+		}
+	}
+	return ""
+}
+
+func extractCodexFailureMessage(toolResponse any, exitCode int) string {
+	message := findStringField(toolResponse, "stderr", "error", "message", "output", "stdout")
+	if message == "" {
+		return fmt.Sprintf("Bash command failed with exit code %d", exitCode)
+	}
+	return message
+}
+
+func classifyCodexPostToolUse(toolName string, toolResponse any) (string, bool) {
+	if !strings.EqualFold(strings.TrimSpace(toolName), "Bash") {
+		return "", false
+	}
+	if exitCode, ok := findNumericField(toolResponse, "exit_code", "exitCode", "status_code"); ok && exitCode != 0 {
+		return extractCodexFailureMessage(toolResponse, exitCode), true
+	}
+	if success, ok := findBoolField(toolResponse, "success", "ok"); ok && !success {
+		message := findStringField(toolResponse, "stderr", "error", "message", "output")
+		if message == "" {
+			message = "Bash command failed"
+		}
+		return message, true
+	}
+	if text, ok := toolResponse.(string); ok {
+		text = normalizeNotificationMessage(text)
+		if text == "" {
+			return "", false
+		}
+		if matches := codexExitCodeRegexp.FindStringSubmatch(text); len(matches) == 2 {
+			return text, true
+		}
+		for _, re := range codexErrorTextPatterns {
+			if re.MatchString(text) {
+				return text, true
+			}
+		}
+	}
+	return "", false
+}
+
+func stripANSIEscapes(s string) string {
+	return ansiRegexp.ReplaceAllString(s, "")
+}
+
+func isCodexRunReadDone(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, io.EOF) || errors.Is(err, os.ErrClosed) {
+		return true
+	}
+	return strings.Contains(strings.ToLower(err.Error()), "input/output error")
+}
+
+func (d *codexQuestionDetector) Observe(chunk []byte) (string, bool) {
+	cleaned := stripANSIEscapes(string(chunk))
+	if cleaned == "" {
+		return "", false
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.tail += cleaned
+	if len(d.tail) > 4096 {
+		d.tail = d.tail[len(d.tail)-4096:]
+	}
+	now := time.Now()
+	if !d.lastSent.IsZero() && now.Sub(d.lastSent) < codexQuestionNotifyCooldown {
+		return "", false
+	}
+	for _, re := range codexQuestionPatterns {
+		if re.MatchString(d.tail) {
+			d.lastSent = now
+			return codexQuestionMessage(d.tail), true
+		}
+	}
+	return "", false
+}
+
+func codexQuestionMessage(tail string) string {
+	lines := strings.Split(tail, "\n")
+	for _, line := range lines {
+		line = normalizeNotificationMessage(line)
+		if line == "" {
+			continue
+		}
+		for _, re := range codexQuestionHeadlinePatterns {
+			if re.MatchString(line) {
+				return line
+			}
+		}
+	}
+	for i := len(lines) - 1; i >= 0; i-- {
+		line := normalizeNotificationMessage(lines[i])
+		if line == "" {
+			continue
+		}
+		for _, re := range codexQuestionPatterns {
+			if re.MatchString(line) {
+				return line
+			}
+		}
+	}
+	return "Codex is waiting for input or approval"
+}
+
+func codexRunNotifyID() string {
+	if notifyID := codexNotifyID(""); notifyID != "" {
+		return notifyID
+	}
+	id, err := uuid.NewV7()
+	if err != nil {
+		return fmt.Sprintf("codex-%d", time.Now().UnixNano())
+	}
+	return id.String()
+}
+
+func agentHookCodexStopRun(cmd *cobra.Command, args []string) (rtnErr error) {
+	defer func() {
+		sendActivity("agenthook-codex-stop", rtnErr == nil)
+	}()
+
+	hookInput, cwd, err := readCodexHookInput()
+	if err != nil {
+		return err
+	}
+
+	message := normalizeNotificationMessage(hookInput.LastAssistantMessage)
+	if len([]rune(message)) <= 20 && hookInput.TranscriptPath != "" {
+		message = extractTranscriptText(hookInput.TranscriptPath)
+	}
+	status := classifyCodexStopStatus(message)
+	if status == "" {
+		return nil
+	}
+	if err := sendHookNotificationForAgentWithNotifyID(message, cwd, status, "codex", codexNotifyID(hookInput.SessionID)); err != nil {
+		return fmt.Errorf("sending agent notification: %v", err)
+	}
+	return nil
+}
+
+func agentHookCodexPostToolUseRun(cmd *cobra.Command, args []string) (rtnErr error) {
+	defer func() {
+		sendActivity("agenthook-codex-posttooluse", rtnErr == nil)
+	}()
+
+	hookInput, cwd, err := readCodexHookInput()
+	if err != nil {
+		return err
+	}
+
+	toolResponse := parseCodexToolResponse(hookInput.ToolResponse)
+	message, ok := classifyCodexPostToolUse(hookInput.ToolName, toolResponse)
+	if !ok {
+		return nil
+	}
+	if err := sendHookNotificationForAgentWithNotifyID(message, cwd, "error", "codex", codexNotifyID(hookInput.SessionID)); err != nil {
+		return fmt.Errorf("sending agent notification: %v", err)
+	}
+	return nil
+}
+
+func agentHookCodexUserPromptSubmitRun(cmd *cobra.Command, args []string) (rtnErr error) {
+	defer func() {
+		sendActivity("agenthook-codex-userpromptsubmit", rtnErr == nil)
+	}()
+
+	hookInput, _, err := readCodexHookInput()
+	if err != nil {
+		return err
+	}
+	if err := clearHookNotification(codexNotifyID(hookInput.SessionID)); err != nil {
+		return fmt.Errorf("clearing agent notification: %v", err)
+	}
+	return nil
+}
+
+func agentHookCodexRun(cmd *cobra.Command, args []string) (rtnErr error) {
+	defer func() {
+		sendActivity("agenthook-codex-run", rtnErr == nil)
+	}()
+
+	runArgs := args[1:]
+	if len(runArgs) == 0 {
+		runArgs = []string{"codex"}
+	}
+	binPath, err := exec.LookPath(runArgs[0])
+	if err != nil {
+		return fmt.Errorf("finding codex executable %q: %v", runArgs[0], err)
+	}
+
+	notifyID := codexRunNotifyID()
+	proxyCmd := exec.Command(binPath, runArgs[1:]...)
+	proxyCmd.Stderr = nil
+	proxyCmd.Stdout = nil
+	proxyCmd.Stdin = nil
+	proxyCmd.Env = append(os.Environ(), codexNotifyIDEnv+"="+notifyID)
+
+	ptmx, err := pty.Start(proxyCmd)
+	if err != nil {
+		return fmt.Errorf("starting codex pty: %v", err)
+	}
+	defer ptmx.Close()
+
+	if stdinFd := int(os.Stdin.Fd()); term.IsTerminal(stdinFd) {
+		if size, err := pty.GetsizeFull(os.Stdin); err == nil {
+			_ = pty.Setsize(ptmx, size)
+		}
+	}
+
+	var oldState *term.State
+	if stdinFd := int(os.Stdin.Fd()); term.IsTerminal(stdinFd) {
+		oldState, err = term.MakeRaw(stdinFd)
+		if err != nil {
+			return fmt.Errorf("setting terminal raw mode: %v", err)
+		}
+		defer func() {
+			_ = term.Restore(stdinFd, oldState)
+		}()
+	}
+
+	go func() {
+		_, _ = io.Copy(ptmx, os.Stdin)
+	}()
+
+	detector := &codexQuestionDetector{}
+	readBuf := make([]byte, 4096)
+	for {
+		n, readErr := ptmx.Read(readBuf)
+		if n > 0 {
+			chunk := readBuf[:n]
+			if _, err := os.Stdout.Write(chunk); err != nil {
+				return fmt.Errorf("writing codex output: %v", err)
+			}
+			if message, matched := detector.Observe(chunk); matched {
+				if err := sendHookNotificationWithBeepForAgentWithNotifyID(message, os.Getenv("PWD"), "question", "codex", notifyID); err != nil {
+					return fmt.Errorf("sending agent notification: %v", err)
+				}
+			}
+		}
+		if readErr == nil {
+			continue
+		}
+		if isCodexRunReadDone(readErr) {
+			break
+		}
+		return fmt.Errorf("reading codex output: %v", readErr)
+	}
+
+	waitErr := proxyCmd.Wait()
+	if waitErr == nil {
+		return nil
+	}
+	return waitErr
 }
 
 func agentHookClaudeNotificationRun(cmd *cobra.Command, args []string) (rtnErr error) {

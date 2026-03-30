@@ -14,15 +14,15 @@ import { AgentNotifyItem } from "./agentnotifyitem";
 function getStatusIcon(status: string): { icon: string; color: string } {
     switch (status) {
         case "completion":
-            return { icon: "fa-check-circle", color: "var(--color-green)" };
+            return { icon: "fa-check-circle", color: "#4ade80" };
         case "question":
             return { icon: "fa-question-circle", color: "#fbbf24" };
         case "waiting":
             return { icon: "fa-clock", color: "#60a5fa" };
         case "error":
-            return { icon: "fa-times-circle", color: "var(--color-red)" };
+            return { icon: "fa-times-circle", color: "#ef4444" };
         default:
-            return { icon: "fa-info-circle", color: "var(--color-secondary)" };
+            return { icon: "fa-info-circle", color: "#94a3b8" };
     }
 }
 

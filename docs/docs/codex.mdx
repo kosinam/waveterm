@@ -1,0 +1,113 @@
+---
+sidebar_position: 1.95
+id: "codex"
+title: "Codex Integration"
+---
+
+import { VersionBadge } from "@site/src/components/versionbadge";
+
+# Codex Agent Notifications <VersionBadge version="v0.15.0" />
+
+Wave can surface Codex CLI activity in the Agent panel the same way it already does for Claude Code and opencode. The integration uses `wsh agenthook codex ...` handlers wired into Codex hooks, plus an optional `run` wrapper for best-effort approval and question detection while Codex is running interactively.
+
+Completion and error notifications come from official Codex hook events. Question notifications are best-effort because Codex does not currently expose a dedicated question or notification hook event.
+
+## Enable Codex hooks
+
+Codex hooks are behind a feature flag in `~/.codex/config.toml`:
+
+```toml
+[features]
+codex_hooks = true
+```
+
+Per the official Codex hooks docs, Codex discovers hook configuration from `~/.codex/hooks.json` and `<repo>/.codex/hooks.json`.
+
+## Hook setup
+
+Add this to `~/.codex/hooks.json`:
+
+```json
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "wsh agenthook codex posttooluse"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "wsh agenthook codex userpromptsubmit"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "wsh agenthook codex stop"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+What each hook does:
+
+- `PostToolUse` watches Bash results and raises an error notification for high-confidence command failures.
+- `UserPromptSubmit` clears the active notification when you respond, so stale question or error states do not stick around.
+- `Stop` sends the final completion notification and can reclassify the turn as a question or error when the final assistant message clearly indicates that state.
+
+## Optional question detection
+
+Codex does not currently document a first-class hook for “the agent is waiting on the human right now”. To cover that gap, Wave ships an optional PTY wrapper:
+
+```sh
+wsh agenthook codex run -- codex
+```
+
+If you want this to be your default launcher, add a shell alias:
+
+```sh
+alias codex='wsh agenthook codex run -- codex'
+```
+
+The wrapper does three things:
+
+- proxies the interactive Codex session through a PTY so terminal behavior still works normally
+- injects a stable notification id into the environment so all hook updates collapse onto one Agent panel entry
+- watches live terminal output for high-confidence approval or input prompts and emits a best-effort `question` notification with a beep
+
+This heuristic is intentionally conservative. If you run Codex in a mode that never asks for approval, you should mostly see completion and error notifications only.
+
+## What you will see in Wave
+
+- `completion`: Codex finished a turn and produced a final response
+- `error`: a Bash tool invocation failed, or the final response clearly indicates the task could not be completed
+- `question`: Wave detected that Codex is likely waiting for approval or input
+
+Notifications are keyed to the current Wave terminal block, so clicking one jumps back to the originating block and tab.
+
+## Notes
+
+- Codex hook support is currently experimental upstream and disabled on Windows in the official Codex docs.
+- `PostToolUse` matchers currently only see `Bash`.
+- Commands run with the session `cwd`, so branch and worktree metadata are resolved automatically by `wsh agenthook`.
+
+Sources:
+
+- [Codex Hooks](https://developers.openai.com/codex/hooks)
+- [Agent approvals & security](https://developers.openai.com/codex/agent-approvals-security)
