@@ -67,6 +67,12 @@ function saveReadIdsToStorage(ids: Set<string>) {
     }
 }
 
+// Tracks when each notification last arrived so we can apply a grace period before
+// auto-marking it as read on keystroke (prevents notifications from being immediately
+// dismissed when the user is already typing in the originating block).
+const notificationArrivalMs = new Map<string, number>();
+const notificationKeystrokeGraceMs = 3000;
+
 // Set of notifyids that have been read (navigated to), persisted across workspace switches.
 export const agentReadIdsAtom: PrimitiveAtom<Set<string>> = atom(loadReadIdsFromStorage());
 
@@ -114,12 +120,15 @@ function isMeaningfulTypingKey(event: KeyboardEvent): boolean {
 function markUnreadNotificationsReadForBlock(target: EventTarget | null): void {
     const targetBlockId = getEventBlockId(target);
     if (!targetBlockId) return;
+    const now = Date.now();
     const notifications = globalStore.get(agentNotificationsAtom);
     const readIds = globalStore.get(agentReadIdsAtom);
     for (const notification of notifications) {
         if (readIds.has(notification.notifyid)) continue;
         const notificationBlockId = notification.oref?.split(":")[1];
         if (notificationBlockId !== targetBlockId) continue;
+        const arrivedAt = notificationArrivalMs.get(notification.notifyid) ?? 0;
+        if (now - arrivedAt < notificationKeystrokeGraceMs) continue;
         markAgentNotificationRead(notification.notifyid);
     }
 }
@@ -243,11 +252,13 @@ export function setupAgentNotifySubscription(): void {
                 globalStore.set(agentNotificationsAtom, (prev) => prev.filter((n) => n.notifyid !== data.notifyid));
                 clearAgentNotificationReadState(data.notifyid);
                 pendingPruneIds.delete(data.notifyid);
+                notificationArrivalMs.delete(data.notifyid);
                 return;
             }
             if (data.notification == null) return;
 
             const incoming = data.notification;
+            notificationArrivalMs.set(incoming.notifyid, Date.now());
             const existing = globalStore.get(agentNotificationsAtom).find((n) => n.notifyid === incoming.notifyid);
             if (existing == null) {
                 clearAgentNotificationReadState(incoming.notifyid);

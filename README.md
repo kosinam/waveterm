@@ -4,6 +4,8 @@
 
 This fork of [WaveTerm](https://github.com/wavetermdev/waveterm) adds cmux-style agent notifications and tmux keybindings
 
+![WaveMux screenshot](assets/wavemux-screenshot.png)
+
 ---
 
 ## tmux-style Ctrl-w Chord Keybindings
