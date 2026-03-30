@@ -39,7 +39,7 @@ import { CHORD_TIMEOUT } from "@/util/sharedconst";
 import { fireAndForget, stringToBase64 } from "@/util/util";
 import * as jotai from "jotai";
 import { navigateToNotification } from "@/app/agentnotifypanel/agentnotifypanel";
-import { agentNotificationsAtom, agentReadIdsAtom } from "@/app/store/agentnotify";
+import { agentNotificationsAtom, agentReadIdsAtom, markAgentNotificationRead } from "@/app/store/agentnotify";
 import { modalsModel } from "./modalmodel";
 import { isBuilderWindow, isTabWindow } from "./windowtype";
 
@@ -55,6 +55,7 @@ const DEFAULT_CHORD_PREFIX = "Ctrl:w";
 let activeChord: string | null = null;
 let chordTimeout: NodeJS.Timeout = null;
 let lastUnreadNotificationJumpId: string | null = null;
+let pendingAutoReadTimer: ReturnType<typeof setTimeout> | null = null;
 
 function resetChord() {
     activeChord = null;
@@ -1080,6 +1081,19 @@ function registerGlobalKeys() {
             model.setAgentNotifyPanelVisible(true);
         }
         fireAndForget(() => navigateToNotification(unread, { markRead: false }));
+        if (pendingAutoReadTimer !== null) {
+            clearTimeout(pendingAutoReadTimer);
+            pendingAutoReadTimer = null;
+        }
+        if (unread.status === "completion" || unread.status === "error") {
+            const notifyId = unread.notifyid;
+            pendingAutoReadTimer = setTimeout(() => {
+                pendingAutoReadTimer = null;
+                const m = WorkspaceLayoutModel.getInstance();
+                if (!m.getAgentNotifyPanelVisible()) return;
+                markAgentNotificationRead(notifyId);
+            }, 5000);
+        }
         return true;
     });
     const chordPrefix = globalStore.get(getSettingsKeyAtom("app:chordprefix")) || DEFAULT_CHORD_PREFIX;
