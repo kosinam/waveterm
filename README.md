@@ -1,14 +1,14 @@
-# WaveTerm — Fork Differences
+# WaveMux - waveterm with tmux keybinding and cmux-like agent notifications
 
 > **Original WaveTerm README:** [README.upstream.md](README.upstream.md)
 
-This fork of [WaveTerm](https://github.com/wavetermdev/waveterm) adds several quality-of-life features focused on keyboard-driven workflows and AI agent integration.
+This fork of [WaveTerm](https://github.com/wavetermdev/waveterm) adds cmux-style agent notifications and tmux keybindings
 
 ---
 
-## tmux-style Ctrl-B Chord Keybindings
+## tmux-style Ctrl-w Chord Keybindings
 
-A configurable prefix chord is layered on top of WaveTerm's existing keybindings. The default prefix is **`Ctrl-W`** — chosen to avoid conflict with nested tmux sessions, which use `Ctrl-B` by default (WaveTerm would otherwise intercept `Ctrl-B` before tmux sees it).
+A configurable prefix chord is layered on top of WaveTerm's existing keybindings. The default prefix is **`Ctrl-w`** — chosen to avoid conflict with nested tmux sessions, which use `Ctrl-B` by default (WaveTerm would otherwise intercept `Ctrl-B` before tmux sees it).
 
 To change the prefix, set `app:chordprefix` in your WaveTerm `settings.json` and restart. For example, to use the tmux default:
 
@@ -44,31 +44,11 @@ A **BottomBar** input component appears for prompted commands (`:`, `?`). A **Wo
 
 The focused block border and resize handles now use a dedicated `--block-border-color` CSS variable (previously shared with `accent-color`), keeping the focus indicator visually distinct.
 
-A new `app:hidewidgetpanel` setting (also toggleable from the tab bar context menu) lets you permanently hide the right-side widget panel.
+
 
 ---
 
-## System Stats in Tab Bar
-
-CPU usage, memory usage, and 1-minute load average are shown in the right side of the tab bar. Each metric is colour-coded:
-
-| Metric | Yellow | Red |
-|--------|--------|-----|
-| CPU | ≥ 60 % | ≥ 85 % |
-| Memory | ≥ 70 % | ≥ 90 % |
-| Load avg | ≥ 1.5 × CPU count | ≥ 2 × CPU count |
-
-Stats are polled via the existing `sysinfo` RPC and update every few seconds.
-
----
-
-## Browser Block: Auto-focus URL Field
-
-Opening a new browser block automatically focuses the URL input field so you can type an address immediately without an extra click.
-
----
-
-## Agent Notification Panel
+## Cmux-like agent Notification Panel
 
 A collapsible panel on the left side of the workspace aggregates notifications from AI coding agents running in terminal panes. It surfaces completions, errors, and questions without requiring you to watch each terminal.
 
@@ -266,18 +246,13 @@ The wrapper proxies the interactive session through a PTY (so terminal behaviour
 
 ---
 
-## Summary of new files
+---
 
-| Path | Description |
-|------|-------------|
-| `cmd/wsh/cmd/wshcmd-agenthook.go` | `wsh agenthook` — Claude, opencode, and Codex hook handlers |
-| `cmd/wsh/cmd/wshcmd-agentnotify.go` | `wsh agentnotify` — manual notification sender |
-| `frontend/app/agentnotifypanel/` | Agent panel React components |
-| `frontend/app/store/agentnotify.ts` | Agent notification store and read-state logic |
-| `frontend/app/bottombar/` | BottomBar prompted-input component |
-| `frontend/app/modals/workspacepickermodal.tsx` | Workspace picker modal |
-| `frontend/app/tab/tabbar-stats.tsx` | System stats tab bar component |
-| `pkg/wcore/agentnotify.go` | Backend notification dispatch and error-suppression logic |
-| `pkg/baseds/agentnotify.go` | Persistent notification storage |
-| `integrations/opencode/waveterm.js` | opencode plugin for agent notifications |
-| `docs/docs/codex.mdx` | Codex integration documentation |
+## Miscelaneous enhancements
+
+- CPU usage, memory usage, and 1-minute load average are shown in the right side of the tab bar in fullscreen mode
+- Opening a new browser block automatically focuses the URL input field so you can type an address immediately without an extra click.
+- A new `app:hidewidgetpanel` setting (also toggleable from the tab bar context menu or via Ctrl-w w) lets you permanently hide the right-side widget panel.
+- tmux-like workspace picker via Ctrl-w s
+
+---
