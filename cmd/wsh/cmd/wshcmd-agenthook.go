@@ -22,6 +22,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/spf13/cobra"
 	"github.com/wavetermdev/waveterm/pkg/baseds"
+	"github.com/wavetermdev/waveterm/pkg/wcore"
 	"github.com/wavetermdev/waveterm/pkg/wshrpc"
 	"github.com/wavetermdev/waveterm/pkg/wshrpc/wshclient"
 	"golang.org/x/term"
@@ -212,6 +213,8 @@ type codexQuestionDetector struct {
 const (
 	codexNotifyIDEnv            = "WAVE_CODEX_NOTIFYID"
 	codexQuestionNotifyCooldown = 5 * time.Second
+	agentLifecycleTerminal      = "terminal"
+	agentLifecycleIntermediate  = "intermediate"
 )
 
 var (
@@ -267,6 +270,14 @@ var (
 		regexp.MustCompile(`(?i)\bpermission denied\b`),
 		regexp.MustCompile(`(?i)\bno such file or directory\b`),
 		regexp.MustCompile(`(?i)\bblocked\b`),
+	}
+	codexTerminalErrorPatterns = []*regexp.Regexp{
+		regexp.MustCompile(`(?i)^(?:i(?:'m| am)?\s+)?(?:cannot|can't|could not|couldn't|unable to|was not able to|wasn't able to)\b`),
+		regexp.MustCompile(`(?i)^(?:the )?(?:task|request|operation)\s+(?:failed|could not be completed)\b`),
+		regexp.MustCompile(`(?i)^(?:permission denied|no such file or directory)\b`),
+	}
+	codexCompletionTextPatterns = []*regexp.Regexp{
+		regexp.MustCompile(`(?i)\b(?:done|complete|completed|implemented|fixed|resolved|updated|succeeded|successfully|passes|passes now|no errors found|finished)\b`),
 	}
 )
 
@@ -466,10 +477,14 @@ func sendHookNotification(message, cwd, status string) error {
 }
 
 func sendHookNotificationForAgent(message, cwd, status, agent string) error {
-	return sendHookNotificationForAgentWithNotifyID(message, cwd, status, agent, "")
+	return sendHookNotificationForAgentWithNotifyIDLifecycle(message, cwd, status, agent, "", agentLifecycleTerminal)
 }
 
 func sendHookNotificationForAgentWithNotifyID(message, cwd, status, agent, notifyId string) error {
+	return sendHookNotificationForAgentWithNotifyIDLifecycle(message, cwd, status, agent, notifyId, agentLifecycleTerminal)
+}
+
+func sendHookNotificationForAgentWithNotifyIDLifecycle(message, cwd, status, agent, notifyId, lifecycle string) error {
 	if message == "" {
 		message = "done"
 	}
@@ -501,28 +516,33 @@ func sendHookNotificationForAgentWithNotifyID(message, cwd, status, agent, notif
 	}
 
 	notification := baseds.AgentNotification{
-		NotifyId: notifyId,
-		ORef:     orefStr,
-		Agent:    agent,
-		Status:   status,
-		Message:  message,
-		WorkDir:  workDir,
-		Branch:   branch,
-		Worktree: worktree,
+		NotifyId:  notifyId,
+		ORef:      orefStr,
+		Agent:     agent,
+		Status:    status,
+		Lifecycle: lifecycle,
+		Message:   message,
+		WorkDir:   workDir,
+		Branch:    branch,
+		Worktree:  worktree,
 	}
 
 	return wshclient.AgentNotifyCommand(RpcClient, notification, &wshrpc.RpcOpts{NoResponse: true})
 }
 
 func sendHookNotificationWithBeep(message, cwd, status string) error {
-	if err := sendHookNotificationWithBeepForAgentWithNotifyID(message, cwd, status, "claude", ""); err != nil {
+	if err := sendHookNotificationWithBeepForAgentWithNotifyIDLifecycle(message, cwd, status, "claude", "", agentLifecycleTerminal); err != nil {
 		return err
 	}
 	return nil
 }
 
 func sendHookNotificationWithBeepForAgentWithNotifyID(message, cwd, status, agent, notifyId string) error {
-	if err := sendHookNotificationForAgentWithNotifyID(message, cwd, status, agent, notifyId); err != nil {
+	return sendHookNotificationWithBeepForAgentWithNotifyIDLifecycle(message, cwd, status, agent, notifyId, agentLifecycleTerminal)
+}
+
+func sendHookNotificationWithBeepForAgentWithNotifyIDLifecycle(message, cwd, status, agent, notifyId, lifecycle string) error {
+	if err := sendHookNotificationForAgentWithNotifyIDLifecycle(message, cwd, status, agent, notifyId, lifecycle); err != nil {
 		return err
 	}
 	return wshclient.ElectronSystemBellCommand(RpcClient, &wshrpc.RpcOpts{Route: "electron"})
@@ -612,10 +632,42 @@ func codexNotifyID(sessionID string) string {
 	return strings.TrimSpace(sessionID)
 }
 
-func classifyCodexStopStatus(message string) string {
+func hasCodexCompletionText(message string) bool {
 	message = normalizeNotificationMessage(message)
 	if message == "" {
+		return false
+	}
+	for _, re := range codexCompletionTextPatterns {
+		if re.MatchString(message) {
+			return true
+		}
+	}
+	return false
+}
+
+func classifyCodexStopStatus(message string, hasPendingError bool) string {
+	message = normalizeNotificationMessage(message)
+	if message == "" {
+		if hasPendingError {
+			return "error"
+		}
 		return ""
+	}
+	for _, re := range codexQuestionTextPatterns {
+		if re.MatchString(message) {
+			return "question"
+		}
+	}
+	for _, re := range codexTerminalErrorPatterns {
+		if re.MatchString(message) {
+			return "error"
+		}
+	}
+	if hasCodexCompletionText(message) {
+		return "completion"
+	}
+	if hasPendingError {
+		return "error"
 	}
 	return "completion"
 }
@@ -862,7 +914,8 @@ func agentHookCodexStopRun(cmd *cobra.Command, args []string) (rtnErr error) {
 	if len([]rune(message)) <= 20 && hookInput.TranscriptPath != "" {
 		message = extractTranscriptText(hookInput.TranscriptPath)
 	}
-	status := classifyCodexStopStatus(message)
+	_, hasPendingError := wcore.GetPendingAgentNotification(codexNotifyID(hookInput.SessionID))
+	status := classifyCodexStopStatus(message, hasPendingError)
 	if status == "" {
 		return nil
 	}
@@ -887,7 +940,7 @@ func agentHookCodexPostToolUseRun(cmd *cobra.Command, args []string) (rtnErr err
 	if !ok {
 		return nil
 	}
-	if err := sendHookNotificationForAgentWithNotifyID(message, cwd, "error", "codex", codexNotifyID(hookInput.SessionID)); err != nil {
+	if err := sendHookNotificationForAgentWithNotifyIDLifecycle(message, cwd, "error", "codex", codexNotifyID(hookInput.SessionID), agentLifecycleIntermediate); err != nil {
 		return fmt.Errorf("sending agent notification: %v", err)
 	}
 	return nil

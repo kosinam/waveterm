@@ -67,9 +67,9 @@ Add this to `~/.codex/hooks.json`:
 
 What each hook does:
 
-- `PostToolUse` watches Bash results and raises an error notification for high-confidence command failures.
+- `PostToolUse` watches Bash results and records high-confidence command failures as intermediate state so they only surface if the turn ultimately stops in error.
 - `UserPromptSubmit` clears the active notification when you respond, so stale question or error states do not stick around.
-- `Stop` sends the final completion notification for the Codex turn.
+- `Stop` sends the terminal notification for the Codex turn.
 
 ## Optional question detection
 
@@ -89,15 +89,15 @@ The wrapper does three things:
 
 - proxies the interactive Codex session through a PTY so terminal behavior still works normally
 - injects a stable notification id into the environment so all hook updates collapse onto one Agent panel entry
-- watches live terminal output for high-confidence approval or input prompts and emits a best-effort `question` notification with a beep
+- watches live terminal output for high-confidence approval or input prompts and emits a best-effort terminal `question` notification with a beep when Codex is blocked on the human
 
-This heuristic is intentionally conservative. If you run Codex in a mode that never asks for approval, you should mostly see completion and error notifications only.
+This heuristic is intentionally conservative. If you run Codex in a mode that never asks for approval, you should mostly see terminal completion and error notifications only.
 
 ## What you will see in Wave
 
 - `completion`: Codex finished a turn and produced a final response
-- `error`: a Bash tool invocation failed
-- `question`: Wave detected that Codex is likely waiting for approval or input
+- `error`: Codex stopped in an error state
+- `question`: Wave detected that Codex is waiting for approval or input and the turn is blocked on the human
 
 Notifications are keyed to the current Wave terminal block, so clicking one jumps back to the originating block and tab.
 

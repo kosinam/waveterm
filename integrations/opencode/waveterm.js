@@ -1,8 +1,7 @@
 // WaveTerm agent notification plugin for opencode.
 //
-// Sends notifications to the WaveTerm Agent panel via `wsh agentnotify` as
-// you work, surfacing completions, errors, and questions without requiring
-// you to watch each terminal pane.
+// Sends terminal notifications to the WaveTerm Agent panel via `wsh agentnotify`
+// so you only see actionable end-of-turn state.
 //
 // Installation
 // ------------
@@ -18,8 +17,6 @@
 
 export const WavetermPlugin = async ({ $, worktree }) => {
   let lastText = ""
-  let lastToolError = ""
-
   // Stable notify ID so "question" → "completion" updates the same panel entry.
   // One slot per project (worktree), matching how Claude Code uses one slot per pane.
   const notifyId = `opencode:${worktree || "default"}`
@@ -38,9 +35,9 @@ export const WavetermPlugin = async ({ $, worktree }) => {
     return [...collapsed].slice(0, max).join("")
   }
 
-  async function sendNotify(message, status, { beep = false } = {}) {
+  async function sendNotify(message, status, { beep = false, lifecycle = "terminal" } = {}) {
     const branch = await getBranch()
-    const args = ["agentnotify", "--agent", "opencode", "--status", status, "--notifyid", notifyId]
+    const args = ["agentnotify", "--agent", "opencode", "--status", status, "--lifecycle", lifecycle, "--notifyid", notifyId]
     if (worktree) {
       args.push("--workdir", worktree, "--worktree", worktree)
     }
@@ -72,34 +69,28 @@ export const WavetermPlugin = async ({ $, worktree }) => {
           lastText = part.text
         }
         if (part?.type === "tool" && part?.state?.status === "error") {
-          lastToolError = part.state.error || "Tool error"
+          const text = truncate(part.state.error || "Tool error", 300)
+          await sendNotify(text, "error", { lifecycle: "intermediate" })
         }
         if (part?.type === "tool" && part?.state?.status === "completed") {
           const s = part.state
           const exit = s.metadata?.exit
           if (exit !== undefined && exit !== 0) {
-            lastToolError = (s.output || `Exit code ${exit}`).trim()
+            const text = truncate((s.output || `Exit code ${exit}`).trim(), 300)
+            await sendNotify(text, "error", { lifecycle: "intermediate" })
           }
         }
       }
 
       if (event.type === "session.idle") {
-        if (lastToolError) {
-          const message = truncate(lastToolError, 300)
-          lastToolError = ""
-          lastText = ""
-          await sendNotify(message, "error")
-        } else {
-          const message = truncate(lastText || "Session complete", 300)
-          lastText = ""
-          await sendNotify(message, "completion")
-        }
+        const message = truncate(lastText || "Session complete", 300)
+        lastText = ""
+        await sendNotify(message, "completion")
       }
 
       if (event.type === "session.error") {
         const errMsg = event.properties?.error?.message || "Session error"
         lastText = ""
-        lastToolError = ""
         await sendNotify(truncate(errMsg, 300), "error")
       }
     },

@@ -1523,6 +1523,27 @@ func finalizeAgentNotification(data baseds.AgentNotification, pending baseds.Age
 	return data
 }
 
+func resolveAgentNotification(
+	data baseds.AgentNotification,
+	existing baseds.AgentNotification,
+	hasExisting bool,
+	pending baseds.AgentNotification,
+	hasPending bool,
+	shellNotificationThresholdMs int64,
+) (*baseds.AgentNotification, bool) {
+	data.Lifecycle = normalizeAgentNotificationLifecycle(data.Lifecycle)
+	if data.Lifecycle == agentNotificationLifecycleIntermediate {
+		return nil, true
+	}
+	data = finalizeAgentNotification(data, pending, hasPending)
+	if data.Status == "completion" && hasExisting {
+		if existing.Status == "error" && data.Timestamp-existing.Timestamp <= shellNotificationThresholdMs {
+			return nil, false
+		}
+	}
+	return &data, false
+}
+
 func (ws *WshServer) AgentNotifyCommand(ctx context.Context, data baseds.AgentNotification) error {
 	if data.NotifyId == "" {
 		return fmt.Errorf("notifyid is required")
@@ -1551,30 +1572,22 @@ func (ws *WshServer) AgentNotifyCommand(ctx context.Context, data baseds.AgentNo
 			}
 		}
 	}
-	data.Lifecycle = normalizeAgentNotificationLifecycle(data.Lifecycle)
-	if data.Lifecycle == agentNotificationLifecycleIntermediate {
+	shellNotificationThresholdMs := getAgentShellNotificationThresholdMs()
+	existing, hasExisting := wcore.GetAgentNotification(data.NotifyId)
+	pending, hasPending := wcore.GetPendingAgentNotification(data.NotifyId)
+	resolved, storePending := resolveAgentNotification(data, existing, hasExisting, pending, hasPending, shellNotificationThresholdMs)
+	if storePending {
 		wcore.SetPendingAgentNotification(data)
 		return nil
 	}
-	pending, hasPending := wcore.GetPendingAgentNotification(data.NotifyId)
-	data = finalizeAgentNotification(data, pending, hasPending)
 	wcore.ClearPendingAgentNotification(data.NotifyId)
-	// If a completion would overwrite a recent error within the configured threshold,
-	// suppress it.
-	shellNotificationThresholdMs := getAgentShellNotificationThresholdMs()
-	// The stop hook fires immediately after an error stop, so the completion message
-	// is not useful — the error is what the user needs to see.
-	if data.Status == "completion" {
-		if existing, ok := wcore.GetAgentNotification(data.NotifyId); ok {
-			if existing.Status == "error" && data.Timestamp-existing.Timestamp <= shellNotificationThresholdMs {
-				return nil
-			}
-		}
+	if resolved == nil {
+		return nil
 	}
 	event := wps.WaveEvent{
 		Event: wps.Event_AgentNotify,
 		Data: baseds.AgentNotifyEvent{
-			Notification: &data,
+			Notification: resolved,
 		},
 	}
 	wps.Broker.Publish(event)

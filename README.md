@@ -149,11 +149,10 @@ wsh agentnotify "Message text" \
     ],
     "PostToolUseFailure": [
       {
-        "matcher": "Bash",
         "hooks": [
           {
             "type": "command",
-            "command": "wsh agentnotify \"Command failed\" --status error --beep --workdir \"$PWD\" --branch \"$(git branch --show-current 2>/dev/null)\" --worktree \"$(git rev-parse --show-toplevel 2>/dev/null)\""
+            "command": "wsh agentnotify \"Command failed\" --status error --lifecycle intermediate --workdir \"$PWD\" --branch \"$(git branch --show-current 2>/dev/null)\" --worktree \"$(git rev-parse --show-toplevel 2>/dev/null)\""
           }
         ]
       }
@@ -245,8 +244,8 @@ Then wire up the hook handlers:
 
 What each hook does:
 
-- `Stop` — sends the final completion notification for the Codex turn.
-- `PostToolUse` (Bash matcher) — raises an `error` notification for high-confidence command failures.
+- `Stop` — sends the terminal notification for the Codex turn.
+- `PostToolUse` (Bash matcher) — records high-confidence Bash failures as intermediate state so they only surface if the turn ultimately stops in error.
 - `UserPromptSubmit` — clears the active notification when you respond, so stale `question` / `error` states do not persist.
 
 #### Optional: question detection via PTY wrapper

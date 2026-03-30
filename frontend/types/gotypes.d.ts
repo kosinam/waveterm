@@ -89,6 +89,7 @@ declare global {
         windowid: string;
         agent?: string;
         status: string;
+        lifecycle?: string;
         message: string;
         workdir?: string;
         branch?: string;

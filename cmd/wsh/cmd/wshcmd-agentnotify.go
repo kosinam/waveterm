@@ -32,14 +32,14 @@ See: wsh agenthook --help`,
 }
 
 var (
-	agentNotifyStatus   string
-	agentNotifyWorkDir  string
-	agentNotifyBranch   string
-	agentNotifyWorktree string
-	agentNotifyBeep     bool
-	agentNotifyTitle    string
-	agentNotifyNotifyId string
-	agentNotifyAgent    string
+	agentNotifyStatus    string
+	agentNotifyWorkDir   string
+	agentNotifyBranch    string
+	agentNotifyWorktree  string
+	agentNotifyBeep      bool
+	agentNotifyTitle     string
+	agentNotifyNotifyId  string
+	agentNotifyAgent     string
 	agentNotifyLifecycle string
 )
 
@@ -95,15 +95,15 @@ func agentNotifyRun(cmd *cobra.Command, args []string) (rtnErr error) {
 	}
 
 	notification := baseds.AgentNotification{
-		NotifyId: notifyId,
-		ORef:     orefStr,
-		Agent:    agentNotifyAgent,
-		Status:   agentNotifyStatus,
+		NotifyId:  notifyId,
+		ORef:      orefStr,
+		Agent:     agentNotifyAgent,
+		Status:    agentNotifyStatus,
 		Lifecycle: agentNotifyLifecycle,
-		Message:  message,
-		WorkDir:  workDir,
-		Branch:   agentNotifyBranch,
-		Worktree: agentNotifyWorktree,
+		Message:   message,
+		WorkDir:   workDir,
+		Branch:    agentNotifyBranch,
+		Worktree:  agentNotifyWorktree,
 	}
 
 	err = wshclient.AgentNotifyCommand(RpcClient, notification, &wshrpc.RpcOpts{NoResponse: true})

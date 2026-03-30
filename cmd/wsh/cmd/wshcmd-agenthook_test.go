@@ -12,9 +12,10 @@ import (
 
 func TestClassifyCodexStopStatus(t *testing.T) {
 	tests := []struct {
-		name    string
-		message string
-		want    string
+		name            string
+		message         string
+		hasPendingError bool
+		want            string
 	}{
 		{name: "empty", message: "", want: ""},
 		{name: "completion", message: "Implemented the change and updated the tests.", want: "completion"},
@@ -22,11 +23,14 @@ func TestClassifyCodexStopStatus(t *testing.T) {
 		{name: "mentions no errors", message: "No errors found; implementation is complete.", want: "completion"},
 		{name: "mentions prior blocking", message: "Blocked earlier by approval, but the task is now done.", want: "completion"},
 		{name: "mentions failure in summary", message: "The build failed earlier because the file did not exist, but I fixed it and the task is complete.", want: "completion"},
+		{name: "question", message: "I need your approval before I can continue.", want: "question"},
+		{name: "terminal error", message: "I couldn't complete the task because the build failed.", want: "error"},
+		{name: "pending error with empty final message", message: "", hasPendingError: true, want: "error"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := classifyCodexStopStatus(tc.message); got != tc.want {
-				t.Fatalf("classifyCodexStopStatus(%q) = %q, want %q", tc.message, got, tc.want)
+			if got := classifyCodexStopStatus(tc.message, tc.hasPendingError); got != tc.want {
+				t.Fatalf("classifyCodexStopStatus(%q, %v) = %q, want %q", tc.message, tc.hasPendingError, got, tc.want)
 			}
 		})
 	}
