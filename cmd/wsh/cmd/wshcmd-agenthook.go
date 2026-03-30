@@ -7,7 +7,6 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -15,17 +14,13 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"sync"
-	"time"
 
-	"github.com/creack/pty"
 	"github.com/google/uuid"
 	"github.com/spf13/cobra"
 	"github.com/wavetermdev/waveterm/pkg/baseds"
 	"github.com/wavetermdev/waveterm/pkg/wcore"
 	"github.com/wavetermdev/waveterm/pkg/wshrpc"
 	"github.com/wavetermdev/waveterm/pkg/wshrpc/wshclient"
-	"golang.org/x/term"
 )
 
 var agentHookCmd = &cobra.Command{
@@ -49,7 +44,6 @@ Supported hook types (codex):
   stop            Final assistant response for a Codex session
   posttooluse     Post-tool hook (currently Bash-focused for error detection)
   userpromptsubmit Clear the active notification when the user re-engages
-  run             Launch Codex through a Wave PTY proxy for best-effort question detection
 
 Example ~/.claude/settings.json Stop hook:
   {"type": "command", "command": "wsh agenthook claude stop"}
@@ -58,8 +52,7 @@ For opencode, use the waveterm.js plugin in ~/.config/opencode/plugins/ instead 
 shell hooks — the plugin receives events directly and calls wsh agentnotify.
 
 For Codex, enable hooks in ~/.codex/config.toml and point hooks.json commands at
-the codex hook handlers below. Use "wsh agenthook codex run -- codex" if you also
-want best-effort question / approval notifications.`,
+the codex hook handlers below.`,
 }
 
 var agentHookClaudeCmd = &cobra.Command{
@@ -106,10 +99,8 @@ var agentHookCodexCmd = &cobra.Command{
 			return agentHookCodexPostToolUseRun(cmd, args)
 		case "userpromptsubmit":
 			return agentHookCodexUserPromptSubmitRun(cmd, args)
-		case "run":
-			return agentHookCodexRun(cmd, args)
 		default:
-			return fmt.Errorf("unsupported hook type %q (supported: stop, posttooluse, userpromptsubmit, run)", args[0])
+			return fmt.Errorf("unsupported hook type %q (supported: stop, posttooluse, userpromptsubmit)", args[0])
 		}
 	},
 	PreRunE: preRunSetupRpcClient,
@@ -204,54 +195,20 @@ type codexHookInput struct {
 	ToolResponse         json.RawMessage `json:"tool_response"`
 }
 
-type codexQuestionDetector struct {
-	mu       sync.Mutex
-	tail     string
-	lastSent time.Time
-}
-
 const (
-	codexNotifyIDEnv            = "WAVE_CODEX_NOTIFYID"
-	codexQuestionNotifyCooldown = 5 * time.Second
-	agentLifecycleTerminal      = "terminal"
-	agentLifecycleIntermediate  = "intermediate"
+	agentLifecycleTerminal     = "terminal"
+	agentLifecycleIntermediate = "intermediate"
 )
 
 var (
-	ansiRegexp            = regexp.MustCompile(`\x1b(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~]|\][^\x07\x1b]*(?:\x07|\x1b\\))`)
-	codexExitCodeRegexp   = regexp.MustCompile(`(?i)\b(?:exit(?:ed)?(?: with)?(?: code)?|status)\s*[:=]?\s*([1-9][0-9]*)\b`)
-	codexQuestionPatterns = []*regexp.Regexp{
-		regexp.MustCompile(`(?i)\bapproval required\b`),
-		regexp.MustCompile(`(?i)\brequires approval\b`),
-		regexp.MustCompile(`(?i)\bwaiting for approval\b`),
-		regexp.MustCompile(`(?i)\bwould you like to run the following command\b`),
-		regexp.MustCompile(`(?i)\bwould you like to allow\b`),
-		regexp.MustCompile(`(?i)\bgrant permission\b`),
-		regexp.MustCompile(`(?i)\bapprove(?: this)?(?: command| action)?\b`),
-		regexp.MustCompile(`(?i)\bpermission (?:required|needed)\b`),
-		regexp.MustCompile(`(?i)\brequest_permissions\b`),
-		regexp.MustCompile(`(?i)\bmcp elicitation\b`),
-		regexp.MustCompile(`(?i)\buser input required\b`),
-		regexp.MustCompile(`(?i)\byes,\s*proceed\b`),
-		regexp.MustCompile(`(?i)\bdon't ask again\b`),
-	}
-	codexQuestionHeadlinePatterns = []*regexp.Regexp{
-		regexp.MustCompile(`(?i)\bapproval required\b`),
-		regexp.MustCompile(`(?i)\brequires approval\b`),
-		regexp.MustCompile(`(?i)\bwaiting for approval\b`),
-		regexp.MustCompile(`(?i)\bwould you like to run the following command\b`),
-		regexp.MustCompile(`(?i)\bwould you like to allow\b`),
-		regexp.MustCompile(`(?i)\bgrant permission\b`),
-		regexp.MustCompile(`(?i)\bapprove(?: this)?(?: command| action)?\b`),
-		regexp.MustCompile(`(?i)\bpermission (?:required|needed)\b`),
-		regexp.MustCompile(`(?i)\brequest_permissions\b`),
-		regexp.MustCompile(`(?i)\bmcp elicitation\b`),
-		regexp.MustCompile(`(?i)\buser input required\b`),
-	}
+	codexExitCodeRegexp       = regexp.MustCompile(`(?i)\b(?:exit(?:ed)?(?: with)?(?: code)?|status)\s*[:=]?\s*([1-9][0-9]*)\b`)
 	codexQuestionTextPatterns = []*regexp.Regexp{
 		regexp.MustCompile(`(?i)\bneed your approval\b`),
 		regexp.MustCompile(`(?i)\bdo you want me to run\b`),
 		regexp.MustCompile(`(?i)\bdo you want me to\b`),
+		regexp.MustCompile(`(?i)\bdo you want to run\b`),
+		regexp.MustCompile(`(?i)\bwould you like to run\b`),
+		regexp.MustCompile(`(?i)\bwould you like me to\b`),
 		regexp.MustCompile(`(?i)\bplease confirm\b`),
 		regexp.MustCompile(`(?i)\bwhat would you like me to do\b`),
 		regexp.MustCompile(`(?i)\bwhich option\b`),
@@ -260,6 +217,13 @@ var (
 		regexp.MustCompile(`(?i)\bI need you to answer\b`),
 		regexp.MustCompile(`(?i)\breply with a number\b`),
 		regexp.MustCompile(`(?i)\bdescribe the command\b`),
+	}
+	codexQuestionChoicePatterns = []*regexp.Regexp{
+		regexp.MustCompile(`(?m)^\s*1\.\s+.+$`),
+		regexp.MustCompile(`(?m)^\s*2\.\s+.+$`),
+		regexp.MustCompile(`(?i)\byes,\s*proceed\b`),
+		regexp.MustCompile(`(?i)\bdon't ask again\b`),
+		regexp.MustCompile(`(?i)\bno,\s*(?:and|do not|don't)\b`),
 	}
 	codexErrorTextPatterns = []*regexp.Regexp{
 		regexp.MustCompile(`(?i)\bfailed\b`),
@@ -626,10 +590,39 @@ func readCodexHookInput() (codexHookInput, string, error) {
 }
 
 func codexNotifyID(sessionID string) string {
-	if notifyID := strings.TrimSpace(os.Getenv(codexNotifyIDEnv)); notifyID != "" {
-		return notifyID
-	}
 	return strings.TrimSpace(sessionID)
+}
+
+func isCodexTerminalQuestion(message string) bool {
+	rawMessage := strings.TrimSpace(message)
+	if rawMessage == "" {
+		return false
+	}
+	normalizedMessage := normalizeNotificationMessage(rawMessage)
+	if normalizedMessage == "" {
+		return false
+	}
+	hasPrompt := false
+	for _, re := range codexQuestionTextPatterns {
+		if re.MatchString(normalizedMessage) {
+			hasPrompt = true
+			break
+		}
+	}
+	choiceMatches := 0
+	for _, re := range codexQuestionChoicePatterns {
+		if re.MatchString(rawMessage) || re.MatchString(normalizedMessage) {
+			choiceMatches++
+		}
+	}
+	if choiceMatches < 2 {
+		return false
+	}
+	if hasPrompt {
+		return true
+	}
+	introLine := strings.TrimSpace(strings.SplitN(rawMessage, "\n", 2)[0])
+	return strings.HasSuffix(introLine, "?")
 }
 
 func hasCodexCompletionText(message string) bool {
@@ -646,28 +639,27 @@ func hasCodexCompletionText(message string) bool {
 }
 
 func classifyCodexStopStatus(message string, hasPendingError bool) string {
-	message = normalizeNotificationMessage(message)
-	if message == "" {
+	rawMessage := strings.TrimSpace(message)
+	if rawMessage == "" {
 		if hasPendingError {
 			return "error"
 		}
 		return ""
 	}
-	for _, re := range codexQuestionTextPatterns {
-		if re.MatchString(message) {
-			return "question"
-		}
+	if isCodexTerminalQuestion(rawMessage) {
+		return "question"
 	}
+	message = normalizeNotificationMessage(rawMessage)
 	for _, re := range codexTerminalErrorPatterns {
 		if re.MatchString(message) {
 			return "error"
 		}
 	}
-	if hasCodexCompletionText(message) {
-		return "completion"
-	}
 	if hasPendingError {
 		return "error"
+	}
+	if hasCodexCompletionText(message) {
+		return "completion"
 	}
 	return "completion"
 }
@@ -786,22 +778,19 @@ func findStringField(v any, keys ...string) string {
 func extractCodexFailureMessage(toolResponse any, exitCode int) string {
 	message := findStringField(toolResponse, "stderr", "error", "message", "output", "stdout")
 	if message == "" {
-		return fmt.Sprintf("Bash command failed with exit code %d", exitCode)
+		return fmt.Sprintf("Tool failed with exit code %d", exitCode)
 	}
 	return message
 }
 
 func classifyCodexPostToolUse(toolName string, toolResponse any) (string, bool) {
-	if !strings.EqualFold(strings.TrimSpace(toolName), "Bash") {
-		return "", false
-	}
 	if exitCode, ok := findNumericField(toolResponse, "exit_code", "exitCode", "status_code"); ok && exitCode != 0 {
 		return extractCodexFailureMessage(toolResponse, exitCode), true
 	}
 	if success, ok := findBoolField(toolResponse, "success", "ok"); ok && !success {
 		message := findStringField(toolResponse, "stderr", "error", "message", "output")
 		if message == "" {
-			message = "Bash command failed"
+			message = "Tool failed"
 		}
 		return message, true
 	}
@@ -820,84 +809,6 @@ func classifyCodexPostToolUse(toolName string, toolResponse any) (string, bool) 
 		}
 	}
 	return "", false
-}
-
-func stripANSIEscapes(s string) string {
-	return ansiRegexp.ReplaceAllString(s, "")
-}
-
-func isCodexRunReadDone(err error) bool {
-	if err == nil {
-		return false
-	}
-	if errors.Is(err, io.EOF) || errors.Is(err, os.ErrClosed) {
-		return true
-	}
-	return strings.Contains(strings.ToLower(err.Error()), "input/output error")
-}
-
-func (d *codexQuestionDetector) Observe(chunk []byte) (string, bool) {
-	cleaned := stripANSIEscapes(string(chunk))
-	if cleaned == "" {
-		return "", false
-	}
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	d.tail += cleaned
-	if len(d.tail) > 4096 {
-		d.tail = d.tail[len(d.tail)-4096:]
-	}
-	now := time.Now()
-	if !d.lastSent.IsZero() && now.Sub(d.lastSent) < codexQuestionNotifyCooldown {
-		return "", false
-	}
-	for _, re := range codexQuestionPatterns {
-		if re.MatchString(d.tail) {
-			msg := codexQuestionMessage(d.tail)
-			d.lastSent = now
-			d.tail = "" // reset so stale approval text can't re-trigger after cooldown
-			return msg, true
-		}
-	}
-	return "", false
-}
-
-func codexQuestionMessage(tail string) string {
-	lines := strings.Split(tail, "\n")
-	for _, line := range lines {
-		line = normalizeNotificationMessage(line)
-		if line == "" {
-			continue
-		}
-		for _, re := range codexQuestionHeadlinePatterns {
-			if re.MatchString(line) {
-				return line
-			}
-		}
-	}
-	for i := len(lines) - 1; i >= 0; i-- {
-		line := normalizeNotificationMessage(lines[i])
-		if line == "" {
-			continue
-		}
-		for _, re := range codexQuestionPatterns {
-			if re.MatchString(line) {
-				return line
-			}
-		}
-	}
-	return "Codex is waiting for input or approval"
-}
-
-func codexRunNotifyID() string {
-	if notifyID := codexNotifyID(""); notifyID != "" {
-		return notifyID
-	}
-	id, err := uuid.NewV7()
-	if err != nil {
-		return fmt.Sprintf("codex-%d", time.Now().UnixNano())
-	}
-	return id.String()
 }
 
 func agentHookCodexStopRun(cmd *cobra.Command, args []string) (rtnErr error) {
@@ -959,88 +870,6 @@ func agentHookCodexUserPromptSubmitRun(cmd *cobra.Command, args []string) (rtnEr
 		return fmt.Errorf("clearing agent notification: %v", err)
 	}
 	return nil
-}
-
-func agentHookCodexRun(cmd *cobra.Command, args []string) (rtnErr error) {
-	defer func() {
-		sendActivity("agenthook-codex-run", rtnErr == nil)
-	}()
-
-	runArgs := args[1:]
-	if len(runArgs) == 0 {
-		runArgs = []string{"codex"}
-	}
-	binPath, err := exec.LookPath(runArgs[0])
-	if err != nil {
-		return fmt.Errorf("finding codex executable %q: %v", runArgs[0], err)
-	}
-
-	notifyID := codexRunNotifyID()
-	proxyCmd := exec.Command(binPath, runArgs[1:]...)
-	proxyCmd.Stderr = nil
-	proxyCmd.Stdout = nil
-	proxyCmd.Stdin = nil
-	proxyCmd.Env = append(os.Environ(), codexNotifyIDEnv+"="+notifyID)
-
-	ptmx, err := pty.Start(proxyCmd)
-	if err != nil {
-		return fmt.Errorf("starting codex pty: %v", err)
-	}
-	defer ptmx.Close()
-
-	if stdinFd := int(os.Stdin.Fd()); term.IsTerminal(stdinFd) {
-		if size, err := pty.GetsizeFull(os.Stdin); err == nil {
-			_ = pty.Setsize(ptmx, size)
-		}
-	}
-
-	var oldState *term.State
-	if stdinFd := int(os.Stdin.Fd()); term.IsTerminal(stdinFd) {
-		oldState, err = term.MakeRaw(stdinFd)
-		if err != nil {
-			return fmt.Errorf("setting terminal raw mode: %v", err)
-		}
-		defer func() {
-			_ = term.Restore(stdinFd, oldState)
-		}()
-	}
-
-	go func() {
-		_, _ = io.Copy(ptmx, os.Stdin)
-	}()
-
-	detector := &codexQuestionDetector{}
-	readBuf := make([]byte, 4096)
-	for {
-		n, readErr := ptmx.Read(readBuf)
-		if n > 0 {
-			chunk := readBuf[:n]
-			if _, err := os.Stdout.Write(chunk); err != nil {
-				return fmt.Errorf("writing codex output: %v", err)
-			}
-			if message, matched := detector.Observe(chunk); matched {
-				if err := sendHookNotificationWithBeepForAgentWithNotifyID(message, os.Getenv("PWD"), "question", "codex", notifyID); err != nil {
-					return fmt.Errorf("sending agent notification: %v", err)
-				}
-			}
-		}
-		if readErr == nil {
-			continue
-		}
-		if isCodexRunReadDone(readErr) {
-			break
-		}
-		return fmt.Errorf("reading codex output: %v", readErr)
-	}
-
-	// Replace any pending question notification with completion now that the session has ended.
-	_ = sendHookNotificationForAgentWithNotifyID("Session complete", os.Getenv("PWD"), "completion", "codex", notifyID)
-
-	waitErr := proxyCmd.Wait()
-	if waitErr == nil {
-		return nil
-	}
-	return waitErr
 }
 
 func agentHookClaudeNotificationRun(cmd *cobra.Command, args []string) (rtnErr error) {

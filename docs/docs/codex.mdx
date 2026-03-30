@@ -8,9 +8,9 @@ import { VersionBadge } from "@site/src/components/versionbadge";
 
 # Codex Agent Notifications <VersionBadge version="v0.15.0" />
 
-Wave can surface Codex CLI activity in the Agent panel the same way it already does for Claude Code and opencode. The integration uses `wsh agenthook codex ...` handlers wired into Codex hooks, plus an optional `run` wrapper for best-effort approval and question detection while Codex is running interactively.
+Wave can surface Codex CLI activity in the Agent panel the same way it already does for Claude Code and opencode. The integration uses `wsh agenthook codex ...` handlers wired into Codex hooks.
 
-Completion and error notifications come from official Codex hook events. Question notifications are best-effort because Codex does not currently expose a dedicated question or notification hook event.
+Completion, error, and question notifications come from the final Codex `Stop` hook. Questions are inferred conservatively only when the last assistant message clearly presents an explicit approval or choice prompt.
 
 ## Enable Codex hooks
 
@@ -69,35 +69,13 @@ What each hook does:
 
 - `PostToolUse` watches Bash results and records high-confidence command failures as intermediate state so they only surface if the turn ultimately stops in error.
 - `UserPromptSubmit` clears the active notification when you respond, so stale question or error states do not stick around.
-- `Stop` sends the terminal notification for the Codex turn.
-
-## Optional question detection
-
-Codex does not currently document a first-class hook for “the agent is waiting on the human right now”. To cover that gap, Wave ships an optional PTY wrapper:
-
-```sh
-wsh agenthook codex run -- codex
-```
-
-If you want this to be your default launcher, add a shell alias:
-
-```sh
-alias codex='wsh agenthook codex run -- codex'
-```
-
-The wrapper does three things:
-
-- proxies the interactive Codex session through a PTY so terminal behavior still works normally
-- injects a stable notification id into the environment so all hook updates collapse onto one Agent panel entry
-- watches live terminal output for high-confidence approval or input prompts and emits a best-effort terminal `question` notification with a beep when Codex is blocked on the human
-
-This heuristic is intentionally conservative. If you run Codex in a mode that never asks for approval, you should mostly see terminal completion and error notifications only.
+- `Stop` sends the terminal notification for the Codex turn, including question prompts when the final message asks you to choose from explicit options.
 
 ## What you will see in Wave
 
 - `completion`: Codex finished a turn and produced a final response
 - `error`: Codex stopped in an error state
-- `question`: Wave detected that Codex is waiting for approval or input and the turn is blocked on the human
+- `question`: Codex is waiting for your approval or choice
 
 Notifications are keyed to the current Wave terminal block, so clicking one jumps back to the originating block and tab.
 

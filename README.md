@@ -244,25 +244,9 @@ Then wire up the hook handlers:
 
 What each hook does:
 
-- `Stop` — sends the terminal notification for the Codex turn.
+- `Stop` — sends the terminal notification for the Codex turn, including question prompts when the final message presents explicit options.
 - `PostToolUse` (Bash matcher) — records high-confidence Bash failures as intermediate state so they only surface if the turn ultimately stops in error.
 - `UserPromptSubmit` — clears the active notification when you respond, so stale `question` / `error` states do not persist.
-
-#### Optional: question detection via PTY wrapper
-
-Codex does not currently expose a first-class hook for "the agent is waiting for input". To cover that gap an optional PTY wrapper watches live terminal output for approval or input prompts:
-
-```sh
-wsh agenthook codex run -- codex
-```
-
-For convenience, add a shell alias:
-
-```sh
-alias codex='wsh agenthook codex run -- codex'
-```
-
-The wrapper proxies the interactive session through a PTY (so terminal behaviour is unchanged), injects a stable notify ID so all hook events collapse onto one Agent panel entry, and emits a best-effort `question` notification with a beep when a prompt is detected.
 
 ---
 

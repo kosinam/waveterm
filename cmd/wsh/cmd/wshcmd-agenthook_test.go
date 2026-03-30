@@ -23,8 +23,14 @@ func TestClassifyCodexStopStatus(t *testing.T) {
 		{name: "mentions no errors", message: "No errors found; implementation is complete.", want: "completion"},
 		{name: "mentions prior blocking", message: "Blocked earlier by approval, but the task is now done.", want: "completion"},
 		{name: "mentions failure in summary", message: "The build failed earlier because the file did not exist, but I fixed it and the task is complete.", want: "completion"},
-		{name: "question", message: "I need your approval before I can continue.", want: "question"},
+		{name: "mentions approval in done text", message: "I needed approval earlier, but the task is now complete.", want: "completion"},
+		{name: "pending error overrides completion text", message: "Implemented the change and updated the tests.", hasPendingError: true, want: "error"},
+		{name: "question with explicit choices", message: "Would you like me to run the following command?\n\n1. Yes, proceed\n2. No, and tell Codex what to do differently", want: "question"},
+		{name: "question with explicit choices after a longer intro", message: "Would you like me to proceed with the next verification step?\n\n1. Generate a minimal end-of-turn question prompt only\n2. Summarize the exact stop-classifier patterns now in use\n3. Stop here and wait for your confirmation", want: "question"},
+		{name: "question still wins over pending error", message: "Would you like me to run the following command?\n\n1. Yes, proceed\n2. No, and tell Codex what to do differently", hasPendingError: true, want: "question"},
+		{name: "question without choices is not enough", message: "I need your approval before I can continue.", want: "completion"},
 		{name: "terminal error", message: "I couldn't complete the task because the build failed.", want: "error"},
+		{name: "terminal error with pending error", message: "I couldn't complete the task because the build failed.", hasPendingError: true, want: "error"},
 		{name: "pending error with empty final message", message: "", hasPendingError: true, want: "error"},
 	}
 	for _, tc := range tests {
@@ -41,7 +47,7 @@ func TestParseCodexToolResponseNestedJSON(t *testing.T) {
 	resp := parseCodexToolResponse(raw)
 	msg, ok := classifyCodexPostToolUse("Bash", resp)
 	if !ok {
-		t.Fatalf("expected Bash failure classification")
+		t.Fatalf("expected tool failure classification")
 	}
 	if !strings.Contains(msg, "npm test failed") {
 		t.Fatalf("unexpected failure message: %q", msg)
@@ -53,55 +59,60 @@ func TestClassifyCodexPostToolUseObject(t *testing.T) {
 		"exit_code": float64(1),
 		"stderr":    "go test ./... failed",
 	}
-	msg, ok := classifyCodexPostToolUse("Bash", resp)
+	msg, ok := classifyCodexPostToolUse("ReadFile", resp)
 	if !ok {
-		t.Fatalf("expected Bash failure classification")
+		t.Fatalf("expected non-Bash tool failure classification")
 	}
 	if msg != "go test ./... failed" {
 		t.Fatalf("unexpected failure message: %q", msg)
 	}
 }
 
-func TestClassifyCodexPostToolUseIgnoresSuccessAndOtherTools(t *testing.T) {
-	if _, ok := classifyCodexPostToolUse("ReadFile", map[string]any{"exit_code": float64(1)}); ok {
-		t.Fatalf("expected non-Bash tool to be ignored")
-	}
+func TestClassifyCodexPostToolUseIgnoresSuccess(t *testing.T) {
 	if _, ok := classifyCodexPostToolUse("Bash", map[string]any{"exit_code": float64(0), "stdout": "ok"}); ok {
-		t.Fatalf("expected successful Bash tool to be ignored")
+		t.Fatalf("expected successful tool to be ignored")
+	}
+	if _, ok := classifyCodexPostToolUse("ReadFile", map[string]any{"success": true, "message": "ok"}); ok {
+		t.Fatalf("expected successful non-Bash tool to be ignored")
 	}
 }
 
-func TestCodexQuestionDetector(t *testing.T) {
-	d := &codexQuestionDetector{}
-	msg, ok := d.Observe([]byte("\x1b[31mApproval required:\x1b[0m please confirm this command"))
-	if !ok {
-		t.Fatalf("expected question notification")
-	}
-	if !strings.Contains(strings.ToLower(msg), "approval required") {
-		t.Fatalf("unexpected question message: %q", msg)
-	}
-	if _, ok := d.Observe([]byte("Approval required: repeated")); ok {
-		t.Fatalf("expected detector cooldown to suppress duplicate notification")
-	}
-}
-
-func TestCodexQuestionDetectorApprovalPrompt(t *testing.T) {
-	d := &codexQuestionDetector{}
-	prompt := `Would you like to run the following command?
-
-Reason: Do you want to allow a harmless remote Git query?
-
-$ git ls-remote https://github.com/git/git.git HEAD
+func TestIsCodexTerminalQuestion(t *testing.T) {
+	prompt := `Would you like me to run the following command?
 
 1. Yes, proceed (y)
-2. Yes, and don't ask again for commands that start with git ls-remote (p)
-3. No, and tell Codex what to do differently (esc)`
-	msg, ok := d.Observe([]byte(prompt))
-	if !ok {
-		t.Fatalf("expected approval prompt to trigger question notification")
+2. No, and tell Codex what to do differently (esc)`
+	if !isCodexTerminalQuestion(prompt) {
+		t.Fatalf("expected explicit choice prompt to classify as a question")
 	}
-	if !strings.Contains(strings.ToLower(msg), "would you like to run the following command") {
-		t.Fatalf("unexpected approval prompt message: %q", msg)
+	if isCodexTerminalQuestion("I need your approval before I can continue.") {
+		t.Fatalf("did not expect a prompt without choices to classify as a question")
+	}
+}
+
+func TestIsCodexTerminalQuestionApprovalSelector(t *testing.T) {
+	prompt := `Would you like to run the following command?
+
+Reason: Do you want to allow me to run curl -I https://example.com?
+
+$ curl -I https://example.com
+
+1. Yes, proceed (y)
+2. Yes, and don't ask again for commands that start with curl -I (p)
+3. No, and tell Codex what to do differently (esc)`
+	if !isCodexTerminalQuestion(prompt) {
+		t.Fatalf("expected approval selector prompt to classify as a question")
+	}
+}
+
+func TestIsCodexTerminalQuestionLongerPrompt(t *testing.T) {
+	prompt := `Would you like me to proceed with the next verification step?
+
+1. Generate a minimal end-of-turn question prompt only
+2. Summarize the exact stop-classifier patterns now in use
+3. Stop here and wait for your confirmation`
+	if !isCodexTerminalQuestion(prompt) {
+		t.Fatalf("expected longer explicit choice prompt to classify as a question")
 	}
 }
 

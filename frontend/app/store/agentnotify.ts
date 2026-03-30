@@ -19,6 +19,7 @@ const defaultAgentReadPruneAgeMs = 5 * 60 * 1000;
 const agentReadPruneCheckIntervalMs = 60 * 1000;
 const agentReadPruneAgeKey: keyof SettingsType = "agent:clearreadafterms";
 const pendingPruneIds = new Set<string>();
+const unreadStatuses = new Set(["completion", "question", "waiting", "error"]);
 
 let agentReadPruneInterval: number | null = null;
 
@@ -38,6 +39,27 @@ function areAgentNotificationsEqual(a: AgentNotification, b: AgentNotification):
         a.timestamp === b.timestamp &&
         a.workspacename === b.workspacename
     );
+}
+
+function hasSameActionableContent(a: AgentNotification, b: AgentNotification): boolean {
+    return (
+        a.notifyid === b.notifyid &&
+        (a.status ?? "") === (b.status ?? "") &&
+        (a.message ?? "") === (b.message ?? "")
+    );
+}
+
+export function shouldResetReadState(existing: AgentNotification | null | undefined, incoming: AgentNotification): boolean {
+    if (existing == null) {
+        return true;
+    }
+    if (!unreadStatuses.has(incoming.status ?? "")) {
+        return false;
+    }
+    if (hasSameActionableContent(existing, incoming)) {
+        return false;
+    }
+    return true;
 }
 
 function sortAgentNotifications(notifications: AgentNotification[]): AgentNotification[] {
@@ -260,16 +282,8 @@ export function setupAgentNotifySubscription(): void {
             const incoming = data.notification;
             notificationArrivalMs.set(incoming.notifyid, Date.now());
             const existing = globalStore.get(agentNotificationsAtom).find((n) => n.notifyid === incoming.notifyid);
-            if (existing == null) {
+            if (shouldResetReadState(existing, incoming)) {
                 clearAgentNotificationReadState(incoming.notifyid);
-            } else if (!areAgentNotificationsEqual(existing, incoming)) {
-                // Only re-mark unread when the new status requires user attention.
-                // Transitions to completion/info should not re-alert (e.g. stop hook
-                // firing after user already responded to a question).
-                const attentionStatuses = new Set(["question", "waiting", "error"]);
-                if (attentionStatuses.has(incoming.status ?? "")) {
-                    clearAgentNotificationReadState(incoming.notifyid);
-                }
             }
             globalStore.set(agentNotificationsAtom, (prev) => {
                 // Replace if same notifyid (updated status), otherwise insert and keep oldest-first order
