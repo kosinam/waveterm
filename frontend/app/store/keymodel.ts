@@ -49,7 +49,7 @@ const simpleControlShiftAtom = jotai.atom(false);
 const globalKeyMap = new Map<string, (waveEvent: WaveKeyboardEvent) => boolean>();
 const globalChordMap = new Map<string, Map<string, KeyHandler>>();
 let globalKeybindingsDisabled = false;
-const DEFAULT_CHORD_PREFIX = "Ctrl:a";
+const DEFAULT_CHORD_PREFIX = "Ctrl:w";
 
 // track current chord state and timeout (for resetting)
 let activeChord: string | null = null;
