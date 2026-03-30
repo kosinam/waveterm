@@ -63,6 +63,25 @@ A collapsible panel on the left side of the workspace aggregates notifications f
 - Read state is persisted to `localStorage` and synced across renderers via storage events.
 - The backend suppresses a completion notification that would overwrite a recent error (within 10 s).
 
+### Shell command completion notifications
+
+WaveMux can also send Agent panel notifications for regular shell commands when shell integration is active. Successful commands show up as `completion`; non-zero exits show up as `error`.
+
+- Notifications are only emitted for commands that run longer than `agent:shellnotificationthresholdms` (10 seconds by default).
+- Ignoring is based on the command's first executable token, so `nvim foo.txt` is matched as `nvim`.
+- Per-terminal or global ignores can be set with `term:ignoredprocesses`.
+
+Example:
+
+```json
+{
+  "agent:shellnotificationthresholdms": 10000,
+  "term:ignoredprocesses": ["nvim", "less", "watch", "npm"]
+}
+```
+
+The default ignored list already includes common full-screen or long-running tools such as `vi`, `vim`, `nvim`, `nano`, `less`, `more`, `man`, `top`, `htop`, `btop`, and `watch`.
+
 ### `wsh agentnotify`
 
 Manual / scripted notifications:
