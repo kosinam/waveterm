@@ -159,77 +159,34 @@ wsh agentnotify "Message text" \
 
 ### opencode configuration
 
-**File:** `~/.config/opencode/plugins/waveterm.js`
+opencode uses a native plugin API rather than shell hooks. The plugin file is included in this repo at [`integrations/opencode/waveterm.js`](integrations/opencode/waveterm.js).
 
-opencode uses a native plugin API rather than shell hooks, so the integration is a JavaScript plugin placed in the plugins directory:
+**Step 1 — copy the plugin file:**
 
-```js
-// WaveTerm agent notification plugin for opencode.
-// Install: place this file in ~/.config/opencode/plugins/
-// Requires: wsh in PATH (installed with WaveTerm)
+```sh
+mkdir -p ~/.config/opencode/plugins
+cp integrations/opencode/waveterm.js ~/.config/opencode/plugins/waveterm.js
+```
 
-export const WavetermPlugin = async ({ $, worktree }) => {
-  let lastText = ""
-  let lastToolError = ""
+Or symlink it so it stays in sync with the repo:
 
-  // One stable notify ID per project so "question" → "completion" updates the same entry.
-  const notifyId = `opencode:${worktree || "default"}`
+```sh
+ln -s "$(pwd)/integrations/opencode/waveterm.js" ~/.config/opencode/plugins/waveterm.js
+```
 
-  async function getBranch() {
-    if (!worktree) return ""
-    try { return (await $`git -C ${worktree} branch --show-current`.text()).trim() }
-    catch { return "" }
-  }
+**Step 2 — register the plugin in opencode:**
 
-  function truncate(text, max) {
-    const collapsed = text.replace(/\s+/g, " ").trim()
-    return [...collapsed].slice(0, max).join("")
-  }
+Add `"waveterm"` to the `plugins` array in `~/.config/opencode/config.json`:
 
-  async function sendNotify(message, status, { beep = false } = {}) {
-    const branch = await getBranch()
-    const args = ["agentnotify", "--agent", "opencode", "--status", status, "--notifyid", notifyId]
-    if (worktree) args.push("--workdir", worktree, "--worktree", worktree)
-    if (branch)   args.push("--branch", branch)
-    if (beep)     args.push("--beep")
-    args.push(message)
-    try { await $`wsh ${args}` } catch { /* not inside a WaveTerm session */ }
-  }
-
-  return {
-    event: async ({ event }) => {
-      if (event.type === "question.asked") {
-        const q = event.properties?.questions?.[0]
-        await sendNotify(truncate(q?.question || q?.header || "Input required", 300), "question", { beep: true })
-      }
-      if (event.type === "message.part.updated") {
-        const part = event.properties?.part
-        if (part?.type === "text" && part?.text) lastText = part.text
-        if (part?.type === "tool" && part?.state?.status === "error")
-          lastToolError = part.state.error || "Tool error"
-        if (part?.type === "tool" && part?.state?.status === "completed") {
-          const exit = part.state.metadata?.exit
-          if (exit !== undefined && exit !== 0) lastToolError = (part.state.output || `Exit code ${exit}`).trim()
-        }
-      }
-      if (event.type === "session.idle") {
-        if (lastToolError) {
-          const msg = truncate(lastToolError, 300); lastToolError = ""; lastText = ""
-          await sendNotify(msg, "error")
-        } else {
-          const msg = truncate(lastText || "Session complete", 300); lastText = ""
-          await sendNotify(msg, "completion")
-        }
-      }
-      if (event.type === "session.error") {
-        const errMsg = event.properties?.error?.message || "Session error"
-        lastText = ""; lastToolError = ""
-        await sendNotify(truncate(errMsg, 300), "error")
-      }
-    },
-  }
+```json
+{
+  "plugins": ["waveterm"]
 }
 ```
+
+opencode loads plugins by filename stem from `~/.config/opencode/plugins/`, so the name `"waveterm"` maps to `waveterm.js`.
+
+The plugin sends a `question` notification (with a beep) when opencode asks for input, an `error` notification when a tool fails or the session errors, and a `completion` notification when the session goes idle. All notifications for a given project collapse onto a single Agent panel entry keyed by worktree path.
 
 ---
 
@@ -314,4 +271,5 @@ The wrapper proxies the interactive session through a PTY (so terminal behaviour
 | `frontend/app/tab/tabbar-stats.tsx` | System stats tab bar component |
 | `pkg/wcore/agentnotify.go` | Backend notification dispatch and error-suppression logic |
 | `pkg/baseds/agentnotify.go` | Persistent notification storage |
+| `integrations/opencode/waveterm.js` | opencode plugin for agent notifications |
 | `docs/docs/codex.mdx` | Codex integration documentation |
