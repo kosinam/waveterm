@@ -36,6 +36,7 @@ After pressing the prefix key, a short window accepts the following keys:
 | `a` | Toggle Wave AI panel |
 | `I` | Toggle Agent notification panel |
 | `U` | Jump to latest unread agent notification |
+| `;` | Return to the previously focused pane or Wave AI, across tabs/workspaces |
 | `N` / `$` / `X` | New / rename / delete workspace |
 | `s` | Open workspace picker |
 | `{` / `}` | Swap panes left / right |
@@ -43,6 +44,8 @@ After pressing the prefix key, a short window accepts the following keys:
 | `:` | Enter `wsh` command |
 
 A **BottomBar** input component appears for prompted commands (`:`, `?`). A **WorkspacePickerModal** (`s`) lists all workspaces for fast switching.
+
+This makes `Ctrl-w U` followed by `Ctrl-w ;` a quick round-trip for checking an unread notification and then returning to where you were.
 
 The focused block border and resize handles now use a dedicated `--block-border-color` CSS variable (previously shared with `accent-color`), keeping the focus indicator visually distinct.
 

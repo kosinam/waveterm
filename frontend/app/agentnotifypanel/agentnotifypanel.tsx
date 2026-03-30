@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { agentNotificationsAtom, agentReadIdsAtom, clearAllAgentNotifications, markAgentNotificationRead } from "@/app/store/agentnotify";
+import { recordCurrentFocusLocation, setPendingFocusNavigation } from "@/app/store/focus-history";
 import { atoms } from "@/app/store/global";
 import { globalStore } from "@/app/store/jotaiStore";
 import { RpcApi } from "@/app/store/wshclientapi";
@@ -32,6 +33,7 @@ function getStatusIcon(status: string): { icon: string; color: string } {
 
 async function navigateToNotification(notification: AgentNotification, opts?: NavigateToNotificationOpts) {
     if (!notification) return;
+    recordCurrentFocusLocation();
     if (opts?.markRead ?? true) {
         markAgentNotificationRead(notification.notifyid);
     }
@@ -50,12 +52,28 @@ async function navigateToNotification(notification: AgentNotification, opts?: Na
                 JSON.stringify({ blockId, tabId: notification.tabid })
             );
         }
+        if (blockId && notification.tabid) {
+            setPendingFocusNavigation({
+                workspaceId: notification.workspaceid,
+                tabId: notification.tabid,
+                focusType: "node",
+                blockId,
+            });
+        }
         getApi().switchWorkspace(notification.workspaceid);
         await new Promise((resolve) => setTimeout(resolve, 300));
     }
 
     // Switch to the target tab
     if (notification.tabid) {
+        if (blockId && (!notification.workspaceid || notification.workspaceid === currentWorkspaceId)) {
+            setPendingFocusNavigation({
+                workspaceId: notification.workspaceid ?? currentWorkspaceId,
+                tabId: notification.tabid,
+                focusType: "node",
+                blockId,
+            });
+        }
         getApi().setActiveTab(notification.tabid);
     }
 

@@ -9,6 +9,7 @@ import {
 } from "@/app/store/badge";
 import { ClientModel } from "@/app/store/client-model";
 import { FocusManager } from "@/app/store/focusManager";
+import { applyPendingFocusNavigationForCurrentTab, getPendingFocusNavigation, recordFocusLocation } from "@/app/store/focus-history";
 import { GlobalModel } from "@/app/store/global-model";
 import { globalStore } from "@/app/store/jotaiStore";
 import { getTabModelByTabId, TabModelContext } from "@/app/store/tab-model";
@@ -310,6 +311,34 @@ const AppKeyHandlers = () => {
     return null;
 };
 
+const FocusHistoryTracker = () => {
+    const workspaceId = useAtomValue(atoms.workspaceId);
+    const tabId = useAtomValue(atoms.staticTabId);
+    const focusType = useAtomValue(FocusManager.getInstance().focusType);
+    const layoutModel = getLayoutModelForStaticTab();
+    const focusedNode = useAtomValue(layoutModel.focusedNode);
+    const focusedBlockId = focusedNode?.data?.blockId ?? null;
+
+    useEffect(() => {
+        if (applyPendingFocusNavigationForCurrentTab()) {
+            return;
+        }
+        if (getPendingFocusNavigation() != null || tabId == null) {
+            return;
+        }
+        if (focusType === "waveai") {
+            recordFocusLocation({ workspaceId, tabId, focusType: "waveai" });
+            return;
+        }
+        if (focusedBlockId == null) {
+            return;
+        }
+        recordFocusLocation({ workspaceId, tabId, focusType: "node", blockId: focusedBlockId });
+    }, [focusType, focusedBlockId, tabId, workspaceId]);
+
+    return null;
+};
+
 const BadgeAutoClearing = () => {
     const tabId = useAtomValue(atoms.staticTabId);
     const documentHasFocus = useAtomValue(atoms.documentHasFocus);
@@ -391,6 +420,7 @@ const AppInner = () => {
             <AppBackground />
             <MacOSFirstClickHandler />
             <AppKeyHandlers />
+            <FocusHistoryTracker />
             <AppFocusHandler />
             <AppSettingsUpdater />
             <BadgeAutoClearing />

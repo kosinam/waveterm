@@ -40,6 +40,7 @@ import { fireAndForget, stringToBase64 } from "@/util/util";
 import * as jotai from "jotai";
 import { navigateToNotification } from "@/app/agentnotifypanel/agentnotifypanel";
 import { agentNotificationsAtom, agentReadIdsAtom, markAgentNotificationRead } from "@/app/store/agentnotify";
+import { navigateToPreviousFocus } from "@/app/store/focus-history";
 import { modalsModel } from "./modalmodel";
 import { isBuilderWindow, isTabWindow } from "./windowtype";
 
@@ -1047,6 +1048,11 @@ function registerGlobalKeys() {
             prompt: "wsh:",
             onSubmit: (command: string) => sendWshCommand(command),
         });
+        return true;
+    });
+    // tmux: ; — switch back to the previously focused pane/location
+    ctrlBKeys.set(";", () => {
+        fireAndForget(() => navigateToPreviousFocus());
         return true;
     });
     // custom: a — toggle Wave AI panel
