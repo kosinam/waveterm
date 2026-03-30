@@ -15,6 +15,7 @@ const (
 	ConfigKey_AppConfirmQuit                 = "app:confirmquit"
 	ConfigKey_AppHideAiButton                = "app:hideaibutton"
 	ConfigKey_AppHideWidgetPanel             = "app:hidewidgetpanel"
+	ConfigKey_AppChordPrefix                 = "app:chordprefix"
 	ConfigKey_AppDisableCtrlShiftArrows      = "app:disablectrlshiftarrows"
 	ConfigKey_AppDisableCtrlShiftDisplay     = "app:disablectrlshiftdisplay"
 	ConfigKey_AppFocusFollowsCursor          = "app:focusfollowscursor"

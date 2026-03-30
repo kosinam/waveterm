@@ -49,6 +49,12 @@ const simpleControlShiftAtom = jotai.atom(false);
 const globalKeyMap = new Map<string, (waveEvent: WaveKeyboardEvent) => boolean>();
 const globalChordMap = new Map<string, Map<string, KeyHandler>>();
 let globalKeybindingsDisabled = false;
+// all global key strings, captured at setup time for webview registration
+let globalAllKeys: string[] = [];
+
+const DEFAULT_CHORD_PREFIX = "Ctrl:a";
+// sentinel key used in globalChordMap for the user-configurable prefix chord
+const CHORD_PREFIX_SENTINEL = "__chord_prefix__";
 
 // track current chord state and timeout (for resetting)
 let activeChord: string | null = null;
@@ -567,6 +573,11 @@ function appHandleKeyDown(waveEvent: WaveKeyboardEvent): boolean {
             return true;
         }
     }
+    const chordPrefix = globalStore.get(getSettingsKeyAtom("app:chordprefix")) || DEFAULT_CHORD_PREFIX;
+    if (keyutil.checkKeyPressed(waveEvent, chordPrefix) && globalChordMap.has(CHORD_PREFIX_SENTINEL)) {
+        setActiveChord(CHORD_PREFIX_SENTINEL);
+        return true;
+    }
     const [chordKeyMatch] = checkKeyMap(waveEvent, globalChordMap);
     if (chordKeyMatch) {
         setActiveChord(chordKeyMatch);
@@ -863,9 +874,10 @@ function registerGlobalKeys() {
         WorkspaceLayoutModel.getInstance().setAIPanelVisible(!currentVisible);
         return true;
     });
-    const allKeys = Array.from(globalKeyMap.keys());
+    globalAllKeys = Array.from(globalKeyMap.keys());
     // special case keys, handled by web view
-    allKeys.push("Cmd:l", "Cmd:r", "Cmd:ArrowRight", "Cmd:ArrowLeft", "Cmd:o");
+    globalAllKeys.push("Cmd:l", "Cmd:r", "Cmd:ArrowRight", "Cmd:ArrowLeft", "Cmd:o");
+    const allKeys = globalAllKeys;
 
     const splitBlockKeys = new Map<string, KeyHandler>();
     splitBlockKeys.set("ArrowUp", () => {
@@ -886,9 +898,9 @@ function registerGlobalKeys() {
     });
     globalChordMap.set("Ctrl:Shift:s", splitBlockKeys);
 
-    // Tmux-style Ctrl-B prefix keybindings.
-    // Note: Ctrl-B is consumed as the prefix key and will not pass through to the terminal
-    // (same behavior as tmux itself).
+    // Tmux-style prefix chord keybindings.
+    // The prefix key is configurable via app:chordprefix (default: Ctrl:a).
+    // The prefix is consumed and will not pass through to the terminal.
     const ctrlBKeys = new Map<string, KeyHandler>();
     // tmux: % — split current pane vertically (side by side, new pane to the right)
     ctrlBKeys.set("Shift:%", () => {
@@ -1081,12 +1093,26 @@ function registerGlobalKeys() {
         fireAndForget(() => navigateToNotification(unread, { markRead: false }));
         return true;
     });
-    globalChordMap.set("Ctrl:b", ctrlBKeys);
-    const chordTriggerKeys = Array.from(globalChordMap.keys());
+    globalChordMap.set(CHORD_PREFIX_SENTINEL, ctrlBKeys);
+
+    function buildChordTriggerKeys(): string[] {
+        const configuredPrefix = globalStore.get(getSettingsKeyAtom("app:chordprefix")) || DEFAULT_CHORD_PREFIX;
+        const fixedKeys = Array.from(globalChordMap.keys()).filter((k) => k !== CHORD_PREFIX_SENTINEL);
+        return [configuredPrefix, ...fixedKeys];
+    }
+
+    const chordTriggerKeys = buildChordTriggerKeys();
     // Register chord trigger keys for synchronous chord-mode activation in webviews
     getApi().registerWebviewChordTriggerKeys(chordTriggerKeys);
     // Merge all global keys and chord trigger keys into one webview intercept list
     getApi().registerGlobalWebviewKeys([...allKeys, ...chordTriggerKeys]);
+
+    // Re-register when the prefix setting changes so webview interception stays in sync
+    globalStore.sub(getSettingsKeyAtom("app:chordprefix"), () => {
+        const newChordTriggerKeys = buildChordTriggerKeys();
+        getApi().registerWebviewChordTriggerKeys(newChordTriggerKeys);
+        getApi().registerGlobalWebviewKeys([...globalAllKeys, ...newChordTriggerKeys]);
+    });
 }
 
 function registerBuilderGlobalKeys() {

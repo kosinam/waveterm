@@ -8,7 +8,15 @@ This fork of [WaveTerm](https://github.com/wavetermdev/waveterm) adds several qu
 
 ## tmux-style Ctrl-B Chord Keybindings
 
-A `Ctrl-B` prefix chord (mirroring tmux's default prefix) is layered on top of WaveTerm's existing keybindings. After pressing `Ctrl-B`, a short window accepts the following keys:
+A configurable prefix chord is layered on top of WaveTerm's existing keybindings. The default prefix is **`Ctrl-A`** — chosen to avoid conflict with nested tmux sessions, which use `Ctrl-B` by default (WaveTerm would otherwise intercept `Ctrl-B` before tmux sees it).
+
+To change the prefix, set `app:chordprefix` in your WaveTerm `settings.json`. For example, to use the tmux default:
+
+```json
+{ "app:chordprefix": "Ctrl:b" }
+```
+
+The change takes effect immediately without restarting. After pressing the prefix key, a short window accepts the following keys:
 
 | Key | Action |
 |-----|--------|
