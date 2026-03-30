@@ -116,6 +116,21 @@ func TestIsCodexTerminalQuestionLongerPrompt(t *testing.T) {
 	}
 }
 
+func TestIsCodexTerminalQuestionChoicesOnly(t *testing.T) {
+	prompt := `1. Yes, proceed
+2. No, and tell Codex what to do differently`
+	if !isCodexTerminalQuestion(prompt) {
+		t.Fatalf("expected explicit choices alone to classify as a question")
+	}
+}
+
+func TestIsCodexTerminalQuestionInlineChoices(t *testing.T) {
+	prompt := `Would you like me to proceed with the next verification step? 1. Generate a minimal end-of-turn question prompt only 2. Summarize the exact stop-classifier patterns now in use 3. Stop here and wait for your confirmation`
+	if !isCodexTerminalQuestion(prompt) {
+		t.Fatalf("expected inline numbered choices to classify as a question")
+	}
+}
+
 func TestExtractTranscriptText(t *testing.T) {
 	dir := t.TempDir()
 	transcriptPath := filepath.Join(dir, "codex.jsonl")

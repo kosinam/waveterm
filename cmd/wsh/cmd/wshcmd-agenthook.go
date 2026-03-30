@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"os/exec"
 	"regexp"
@@ -615,6 +616,16 @@ func isCodexTerminalQuestion(message string) bool {
 			choiceMatches++
 		}
 	}
+	inlineOptionMatches := regexp.MustCompile(`(?:^|\s)([1-9])\.\s+\S`).FindAllStringSubmatch(normalizedMessage, -1)
+	choiceNumbers := make(map[string]struct{})
+	for _, match := range inlineOptionMatches {
+		if len(match) == 2 {
+			choiceNumbers[match[1]] = struct{}{}
+		}
+	}
+	if len(choiceNumbers) >= 2 {
+		choiceMatches = 2
+	}
 	if choiceMatches < 2 {
 		return false
 	}
@@ -622,7 +633,10 @@ func isCodexTerminalQuestion(message string) bool {
 		return true
 	}
 	introLine := strings.TrimSpace(strings.SplitN(rawMessage, "\n", 2)[0])
-	return strings.HasSuffix(introLine, "?")
+	if strings.HasSuffix(introLine, "?") {
+		return true
+	}
+	return true
 }
 
 func hasCodexCompletionText(message string) bool {
@@ -821,12 +835,26 @@ func agentHookCodexStopRun(cmd *cobra.Command, args []string) (rtnErr error) {
 		return err
 	}
 
-	message := normalizeNotificationMessage(hookInput.LastAssistantMessage)
+	message := strings.TrimSpace(hookInput.LastAssistantMessage)
 	if len([]rune(message)) <= 20 && hookInput.TranscriptPath != "" {
 		message = extractTranscriptText(hookInput.TranscriptPath)
 	}
+	log.Printf(
+		"agenthook-codex-stop: session=%q transcript=%q cwd=%q last_assistant_message=%q extracted_message=%q",
+		hookInput.SessionID,
+		hookInput.TranscriptPath,
+		cwd,
+		hookInput.LastAssistantMessage,
+		message,
+	)
 	_, hasPendingError := wcore.GetPendingAgentNotification(codexNotifyID(hookInput.SessionID))
 	status := classifyCodexStopStatus(message, hasPendingError)
+	log.Printf(
+		"agenthook-codex-stop: session=%q hasPendingError=%v classified_status=%q",
+		hookInput.SessionID,
+		hasPendingError,
+		status,
+	)
 	if status == "" {
 		return nil
 	}
