@@ -29,6 +29,12 @@ const ClaudeCodeRegex = /^claude\b/;
 const CodexRegex = /^codex\b/;
 const OpencodeRegex = /^opencode\b/;
 const LongRunningShellNotificationThresholdMs = 10_000;
+const CodexApprovalNotifyIdPrefix = "codex-approval:";
+const CodexApprovalBufferMaxLen = 12_000;
+
+type CodexApprovalPrompt = {
+    command: string | null;
+};
 
 type RunningShellCommand = {
     command: string | null;
@@ -36,6 +42,8 @@ type RunningShellCommand = {
 };
 
 const runningShellCommands = new Map<string, RunningShellCommand>();
+const codexApprovalBuffers = new Map<string, string>();
+const codexApprovalActive = new Set<string>();
 
 type Osc16162Command =
     | { command: "A"; data: Record<string, never> }
@@ -123,6 +131,95 @@ export function isOpencodeCommand(decodedCmd: string): boolean {
     return OpencodeRegex.test(normalizeCmd(decodedCmd));
 }
 
+function getCodexApprovalNotifyId(blockId: string): string {
+    return `${CodexApprovalNotifyIdPrefix}${blockId}`;
+}
+
+function stripTerminalControlSequences(data: string): string {
+    return data
+        .replace(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g, "")
+        .replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, "")
+        .replace(/\x1b[@-Z\\-_]/g, "")
+        .replace(/\r/g, "\n");
+}
+
+export function detectCodexToolApprovalPrompt(data: string): CodexApprovalPrompt | null {
+    const sanitized = stripTerminalControlSequences(data);
+    const normalized = sanitized.replace(/\u00a0/g, " ");
+    if (!/Would you like to run the following command\?/i.test(normalized)) {
+        return null;
+    }
+    if (!/1\.\s+Yes,\s*proceed/i.test(normalized)) {
+        return null;
+    }
+    if (!/No,\s+and tell Codex what to do differently/i.test(normalized)) {
+        return null;
+    }
+    if (!/don't ask again/i.test(normalized) && !/2\.\s+/i.test(normalized)) {
+        return null;
+    }
+    const commandMatch = normalized.match(/^\$\s+(.+)$/m);
+    return { command: commandMatch?.[1]?.trim() ?? null };
+}
+
+function createCodexApprovalNotification(blockId: string, prompt: CodexApprovalPrompt): AgentNotification {
+    const message = prompt.command ? `Approval required: ${prompt.command}` : "Codex is waiting for approval";
+    return {
+        notifyid: getCodexApprovalNotifyId(blockId),
+        oref: `block:${blockId}`,
+        tabid: "",
+        workspaceid: "",
+        windowid: "",
+        agent: "codex",
+        status: "question",
+        message: message,
+        timestamp: Date.now(),
+    };
+}
+
+function resetCodexApprovalTracking(blockId: string): void {
+    codexApprovalBuffers.delete(blockId);
+}
+
+export function clearCodexApprovalNotification(blockId: string): void {
+    resetCodexApprovalTracking(blockId);
+    if (!codexApprovalActive.delete(blockId)) {
+        return;
+    }
+    fireAndForget(() => RpcApi.ClearAgentNotificationCommand(TabRpcClient, getCodexApprovalNotifyId(blockId)));
+}
+
+export function observeTerminalOutputForCodexApproval(blockId: string, rawData: string): void {
+    const runningCommand = runningShellCommands.get(blockId);
+    if (!runningCommand || !isCodexCommand(runningCommand.command ?? "")) {
+        resetCodexApprovalTracking(blockId);
+        return;
+    }
+    const chunk = stripTerminalControlSequences(rawData).trim();
+    if (!chunk) {
+        return;
+    }
+    const nextBuffer = `${codexApprovalBuffers.get(blockId) ?? ""}\n${chunk}`.slice(-CodexApprovalBufferMaxLen);
+    codexApprovalBuffers.set(blockId, nextBuffer);
+    if (codexApprovalActive.has(blockId)) {
+        return;
+    }
+    const prompt = detectCodexToolApprovalPrompt(nextBuffer);
+    if (!prompt) {
+        return;
+    }
+    codexApprovalActive.add(blockId);
+    fireAndForget(() => RpcApi.AgentNotifyCommand(TabRpcClient, createCodexApprovalNotification(blockId, prompt)));
+}
+
+export function setRunningShellCommand(blockId: string, command: string | null, startTs = Date.now()): void {
+    if (!command) {
+        runningShellCommands.delete(blockId);
+        return;
+    }
+    runningShellCommands.set(blockId, { command, startTs });
+}
+
 export function shouldNotifyShellCommandCompletion(decodedCmd: string, runtimeMs: number): boolean {
     if (!decodedCmd || runtimeMs <= LongRunningShellNotificationThresholdMs) {
         return false;
@@ -205,6 +302,7 @@ function handleShellIntegrationCommandStart(
     cmd: { command: "C"; data: { cmd64?: string } },
     rtInfo: ObjRTInfo // this is passed by reference and modified inside of this function
 ): void {
+    clearCodexApprovalNotification(blockId);
     rtInfo["shell:state"] = "running-command";
     globalStore.set(termWrap.shellIntegrationStatusAtom, "running-command");
     const connName = globalStore.get(getBlockMetaKeyAtom(blockId, "connection")) ?? "";
@@ -414,6 +512,7 @@ export function handleOsc16162Command(data: string, blockId: string, loaded: boo
     const rtInfo: ObjRTInfo = {};
     switch (cmd.command) {
         case "A": {
+            clearCodexApprovalNotification(blockId);
             runningShellCommands.delete(blockId);
             rtInfo["shell:state"] = "ready";
             globalStore.set(termWrap.shellIntegrationStatusAtom, "ready");
@@ -455,6 +554,7 @@ export function handleOsc16162Command(data: string, blockId: string, loaded: boo
             }
             break;
         case "D":
+            clearCodexApprovalNotification(blockId);
             globalStore.set(termWrap.claudeCodeActiveAtom, false);
             if (cmd.data.exitcode != null) {
                 rtInfo["shell:lastcmdexitcode"] = cmd.data.exitcode;
@@ -480,6 +580,7 @@ export function handleOsc16162Command(data: string, blockId: string, loaded: boo
             }
             break;
         case "R":
+            clearCodexApprovalNotification(blockId);
             runningShellCommands.delete(blockId);
             globalStore.set(termWrap.shellIntegrationStatusAtom, null);
             globalStore.set(termWrap.claudeCodeActiveAtom, false);

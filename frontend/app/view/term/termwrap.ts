@@ -29,10 +29,13 @@ import debug from "debug";
 import * as jotai from "jotai";
 import { debounce } from "throttle-debounce";
 import {
+    clearCodexApprovalNotification,
     handleOsc16162Command,
     handleOsc52Command,
     handleOsc7Command,
     isClaudeCodeCommand,
+    observeTerminalOutputForCodexApproval,
+    setRunningShellCommand,
     type ShellIntegrationStatus,
 } from "./osc-handlers";
 import { bufferLinesToText, createTempFileFromBlob, extractAllClipboardData, normalizeCursorStyle } from "./termutil";
@@ -385,6 +388,11 @@ export class TermWrap {
             const isCC = shellState === "running-command" && isClaudeCodeCommand(lastCmd);
             globalStore.set(this.lastCommandAtom, lastCmd || null);
             globalStore.set(this.claudeCodeActiveAtom, isCC);
+            if (shellState === "running-command" && lastCmd) {
+                setRunningShellCommand(this.blockId, lastCmd);
+            } else {
+                setRunningShellCommand(this.blockId, null);
+            }
         } catch (e) {
             console.log("Error loading runtime info:", e);
         }
@@ -398,6 +406,7 @@ export class TermWrap {
     }
 
     dispose() {
+        clearCodexApprovalNotification(this.blockId);
         this.promptMarkers.forEach((marker) => {
             try {
                 marker.dispose();
@@ -424,6 +433,9 @@ export class TermWrap {
             return;
         }
 
+        if (data.trim().length > 0) {
+            clearCodexApprovalNotification(this.blockId);
+        }
         this.sendDataHandler?.(data);
         this.multiInputCallback?.(data);
     }
@@ -450,8 +462,9 @@ export class TermWrap {
     }
 
     doTerminalWrite(data: string | Uint8Array, setPtyOffset?: number): Promise<void> {
+        const dataStr = data instanceof Uint8Array ? new TextDecoder().decode(data) : data;
+        observeTerminalOutputForCodexApproval(this.blockId, dataStr);
         if (isDev() && this.loaded) {
-            const dataStr = data instanceof Uint8Array ? new TextDecoder().decode(data) : data;
             this.recentWrites.push({ idx: this.recentWritesCounter++, ts: Date.now(), data: dataStr });
             if (this.recentWrites.length > 50) {
                 this.recentWrites.shift();
