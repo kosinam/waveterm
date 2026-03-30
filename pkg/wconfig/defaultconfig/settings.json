@@ -36,6 +36,19 @@
     "term:cursorblink": false,
     "term:copyonselect": true,
     "term:durable": false,
+    "term:ignoredprocesses": [
+        "vi",
+        "vim",
+        "nvim",
+        "nano",
+        "less",
+        "more",
+        "man",
+        "top",
+        "htop",
+        "btop",
+        "watch"
+    ],
     "waveai:showcloudmodes": true,
     "waveai:defaultmode": "waveai@balanced",
     "preview:defaultsort": "name"

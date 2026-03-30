@@ -120,6 +120,7 @@ type MetaTSType struct {
 	TermTheme               string   `json:"term:theme,omitempty"`
 	TermLocalShellPath      string   `json:"term:localshellpath,omitempty"` // matches settings
 	TermLocalShellOpts      []string `json:"term:localshellopts,omitempty"` // matches settings
+	TermIgnoredProcesses    []string `json:"term:ignoredprocesses,omitempty"`
 	TermScrollback          *int     `json:"term:scrollback,omitempty"`
 	TermVDomSubBlockId      string   `json:"term:vdomblockid,omitempty"`
 	TermVDomToolbarBlockId  string   `json:"term:vdomtoolbarblockid,omitempty"`

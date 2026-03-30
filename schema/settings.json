@@ -128,6 +128,12 @@
           },
           "type": "array"
         },
+        "term:ignoredprocesses": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
         "term:gitbashpath": {
           "type": "string"
         },

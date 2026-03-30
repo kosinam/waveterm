@@ -27,6 +27,15 @@ export type ShellIntegrationStatus = "ready" | "running-command";
 
 const ClaudeCodeRegex = /^claude\b/;
 const CodexRegex = /^codex\b/;
+const OpencodeRegex = /^opencode\b/;
+const LongRunningShellNotificationThresholdMs = 10_000;
+
+type RunningShellCommand = {
+    command: string | null;
+    startTs: number;
+};
+
+const runningShellCommands = new Map<string, RunningShellCommand>();
 
 type Osc16162Command =
     | { command: "A"; data: Record<string, never> }
@@ -87,8 +96,7 @@ function checkCommandForTelemetry(decodedCmd: string) {
         return;
     }
 
-    const opencodeRegex = /^opencode\b/;
-    if (opencodeRegex.test(normalizedCmd)) {
+    if (OpencodeRegex.test(normalizedCmd)) {
         recordTEvent("action:term", { "action:type": "opencode" });
         return;
     }
@@ -106,6 +114,89 @@ export function isCodexCommand(decodedCmd: string): boolean {
         return false;
     }
     return CodexRegex.test(normalizeCmd(decodedCmd));
+}
+
+export function isOpencodeCommand(decodedCmd: string): boolean {
+    if (!decodedCmd) {
+        return false;
+    }
+    return OpencodeRegex.test(normalizeCmd(decodedCmd));
+}
+
+export function shouldNotifyShellCommandCompletion(decodedCmd: string, runtimeMs: number): boolean {
+    if (!decodedCmd || runtimeMs <= LongRunningShellNotificationThresholdMs) {
+        return false;
+    }
+    return !isClaudeCodeCommand(decodedCmd) && !isCodexCommand(decodedCmd) && !isOpencodeCommand(decodedCmd);
+}
+
+export function formatShellCommandDuration(runtimeMs: number): string {
+    const totalSeconds = Math.max(1, Math.round(runtimeMs / 1000));
+    if (totalSeconds < 60) {
+        return `${totalSeconds}s`;
+    }
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    if (seconds === 0) {
+        return `${minutes}m`;
+    }
+    return `${minutes}m ${seconds}s`;
+}
+
+function truncateShellCommand(decodedCmd: string): string {
+    const normalized = normalizeCmd(decodedCmd);
+    if (!normalized) {
+        return "Command";
+    }
+    const maxLen = 120;
+    if (normalized.length <= maxLen) {
+        return normalized;
+    }
+    return normalized.slice(0, maxLen - 1) + "…";
+}
+
+function getCommandExecutable(decodedCmd: string): string {
+    const normalized = normalizeCmd(decodedCmd);
+    if (!normalized) {
+        return "";
+    }
+    const firstToken = normalized.split(/\s+/, 1)[0] ?? "";
+    return firstToken.toLowerCase();
+}
+
+function isIgnoredShellProcess(blockId: string, decodedCmd: string): boolean {
+    const executable = getCommandExecutable(decodedCmd);
+    if (!executable) {
+        return false;
+    }
+    const ignoredProcesses = globalStore.get(getOverrideConfigAtom(blockId, "term:ignoredprocesses")) ?? [];
+    return ignoredProcesses.some((processName) => processName?.trim().toLowerCase() === executable);
+}
+
+function createShellCompletionNotification(blockId: string, decodedCmd: string, runtimeMs: number, exitCode?: number): AgentNotification {
+    const commandLabel = truncateShellCommand(decodedCmd);
+    const duration = formatShellCommandDuration(runtimeMs);
+    const succeeded = exitCode == null || exitCode === 0;
+    return {
+        notifyid: `shellcmd:${blockId}:${Date.now()}`,
+        oref: `block:${blockId}`,
+        tabid: "",
+        workspaceid: "",
+        windowid: "",
+        agent: "shell",
+        status: succeeded ? "completion" : "error",
+        message: succeeded
+            ? `${commandLabel} completed in ${duration}`
+            : `${commandLabel} failed with exit code ${exitCode} after ${duration}`,
+        timestamp: Date.now(),
+    };
+}
+
+function notifyShellCommandCompletion(blockId: string, decodedCmd: string, runtimeMs: number, exitCode?: number): void {
+    if (!shouldNotifyShellCommandCompletion(decodedCmd, runtimeMs) || isIgnoredShellProcess(blockId, decodedCmd)) {
+        return;
+    }
+    fireAndForget(() => RpcApi.AgentNotifyCommand(TabRpcClient, createShellCompletionNotification(blockId, decodedCmd, runtimeMs, exitCode)));
 }
 
 function handleShellIntegrationCommandStart(
@@ -147,6 +238,10 @@ function handleShellIntegrationCommandStart(
         globalStore.set(termWrap.claudeCodeActiveAtom, false);
     }
     rtInfo["shell:lastcmdexitcode"] = null;
+    runningShellCommands.set(blockId, {
+        command: rtInfo["shell:lastcmd"] ?? null,
+        startTs: Date.now(),
+    });
 }
 
 // for xterm OSC handlers, we return true always because we "own" the OSC number.
@@ -319,6 +414,7 @@ export function handleOsc16162Command(data: string, blockId: string, loaded: boo
     const rtInfo: ObjRTInfo = {};
     switch (cmd.command) {
         case "A": {
+            runningShellCommands.delete(blockId);
             rtInfo["shell:state"] = "ready";
             globalStore.set(termWrap.shellIntegrationStatusAtom, "ready");
             globalStore.set(termWrap.claudeCodeActiveAtom, false);
@@ -365,6 +461,18 @@ export function handleOsc16162Command(data: string, blockId: string, loaded: boo
             } else {
                 rtInfo["shell:lastcmdexitcode"] = null;
             }
+            {
+                const runningCommand = runningShellCommands.get(blockId);
+                if (runningCommand) {
+                    notifyShellCommandCompletion(
+                        blockId,
+                        runningCommand.command ?? "",
+                        Date.now() - runningCommand.startTs,
+                        cmd.data.exitcode
+                    );
+                    runningShellCommands.delete(blockId);
+                }
+            }
             break;
         case "I":
             if (cmd.data.inputempty != null) {
@@ -372,6 +480,7 @@ export function handleOsc16162Command(data: string, blockId: string, loaded: boo
             }
             break;
         case "R":
+            runningShellCommands.delete(blockId);
             globalStore.set(termWrap.shellIntegrationStatusAtom, null);
             globalStore.set(termWrap.claudeCodeActiveAtom, false);
             if (terminal.buffer.active.type === "alternate") {

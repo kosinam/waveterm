@@ -95,6 +95,7 @@ type WidgetsMetaSchemaHints struct {
 	TermTheme               string   `json:"term:theme,omitempty"`
 	TermLocalShellPath      string   `json:"term:localshellpath,omitempty"`
 	TermLocalShellOpts      []string `json:"term:localshellopts,omitempty"`
+	TermIgnoredProcesses    []string `json:"term:ignoredprocesses,omitempty"`
 	TermScrollback          *int     `json:"term:scrollback,omitempty"`
 	TermTransparency        *float64 `json:"term:transparency,omitempty"`
 	TermAllowBracketedPaste *bool    `json:"term:allowbracketedpaste,omitempty"`

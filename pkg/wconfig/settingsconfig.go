@@ -98,6 +98,7 @@ type SettingsType struct {
 	TermDisableWebGl        bool     `json:"term:disablewebgl,omitempty"`
 	TermLocalShellPath      string   `json:"term:localshellpath,omitempty"`
 	TermLocalShellOpts      []string `json:"term:localshellopts,omitempty"`
+	TermIgnoredProcesses    []string `json:"term:ignoredprocesses,omitempty"`
 	TermGitBashPath         string   `json:"term:gitbashpath,omitempty"`
 	TermScrollback          *int64   `json:"term:scrollback,omitempty"`
 	TermCopyOnSelect        *bool    `json:"term:copyonselect,omitempty"`
@@ -388,11 +389,12 @@ type ConnKeywords struct {
 	DisplayHidden *bool   `json:"display:hidden,omitempty"`
 	DisplayOrder  float32 `json:"display:order,omitempty"`
 
-	TermClear      bool    `json:"term:*,omitempty"`
-	TermFontSize   float64 `json:"term:fontsize,omitempty"`
-	TermFontFamily string  `json:"term:fontfamily,omitempty"`
-	TermTheme      string  `json:"term:theme,omitempty"`
-	TermDurable    *bool   `json:"term:durable,omitempty"`
+	TermClear            bool     `json:"term:*,omitempty"`
+	TermFontSize         float64  `json:"term:fontsize,omitempty"`
+	TermFontFamily       string   `json:"term:fontfamily,omitempty"`
+	TermTheme            string   `json:"term:theme,omitempty"`
+	TermDurable          *bool    `json:"term:durable,omitempty"`
+	TermIgnoredProcesses []string `json:"term:ignoredprocesses,omitempty"`
 
 	CmdEnv            map[string]string `json:"cmd:env,omitempty"`
 	CmdInitScript     string            `json:"cmd:initscript,omitempty"`

@@ -38,8 +38,11 @@ export const AgentNotifyItem = memo(({ notification, isRead, onNavigate, getStat
     const isCompletion = notification.status === "completion";
     const isQuestion = notification.status === "question";
     const isError = notification.status === "error";
+    const isShellCompletion = notification.agent === "shell" && isCompletion;
 
-    const unreadBg = isCompletion
+    const unreadBg = isShellCompletion
+        ? "bg-blue-600/80 hover:bg-blue-600/90"
+        : isCompletion
         ? "bg-green-700/70 hover:bg-green-700/80"
         : isQuestion
           ? "bg-yellow-600/70 hover:bg-yellow-600/80"

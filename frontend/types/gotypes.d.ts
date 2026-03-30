@@ -854,6 +854,7 @@ declare global {
         "term:fontfamily"?: string;
         "term:theme"?: string;
         "term:durable"?: boolean;
+        "term:ignoredprocesses"?: string[];
         "cmd:env"?: {[key: string]: string};
         "cmd:initscript"?: string;
         "cmd:initscript.sh"?: string;
@@ -1198,6 +1199,7 @@ declare global {
         "term:theme"?: string;
         "term:localshellpath"?: string;
         "term:localshellopts"?: string[];
+        "term:ignoredprocesses"?: string[];
         "term:scrollback"?: number;
         "term:vdomblockid"?: string;
         "term:vdomtoolbarblockid"?: string;
@@ -1433,6 +1435,7 @@ declare global {
         "term:disablewebgl"?: boolean;
         "term:localshellpath"?: string;
         "term:localshellopts"?: string[];
+        "term:ignoredprocesses"?: string[];
         "term:gitbashpath"?: string;
         "term:scrollback"?: number;
         "term:copyonselect"?: boolean;
