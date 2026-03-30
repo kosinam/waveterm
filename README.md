@@ -1,117 +1,317 @@
-<p align="center">
-  <a href="https://www.waveterm.dev">
-	<picture>
-		<source media="(prefers-color-scheme: dark)" srcset="./assets/wave-dark.png">
-		<source media="(prefers-color-scheme: light)" srcset="./assets/wave-light.png">
-		<img alt="Wave Terminal Logo" src="./assets/wave-light.png" width="240">
-	</picture>
-  </a>
-  <br/>
-</p>
+# WaveTerm — Fork Differences
 
-# Wave Terminal
+> **Original WaveTerm README:** [README.upstream.md](README.upstream.md)
 
-<div align="center">
+This fork of [WaveTerm](https://github.com/wavetermdev/waveterm) adds several quality-of-life features focused on keyboard-driven workflows and AI agent integration.
 
-[English](README.md) | [한국어](README.ko.md)
+---
 
-</div>
+## tmux-style Ctrl-B Chord Keybindings
 
-[![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2Fwavetermdev%2Fwaveterm.svg?type=shield)](https://app.fossa.com/projects/git%2Bgithub.com%2Fwavetermdev%2Fwaveterm?ref=badge_shield)
+A `Ctrl-B` prefix chord (mirroring tmux's default prefix) is layered on top of WaveTerm's existing keybindings. After pressing `Ctrl-B`, a short window accepts the following keys:
 
-Wave is an open-source, AI-integrated terminal for macOS, Linux, and Windows. It works with any AI model. Bring your own API keys for OpenAI, Claude, or Gemini, or run local models via Ollama and LM Studio. No accounts required.
+| Key | Action |
+|-----|--------|
+| `%` / `"` | Split pane right / below |
+| `c` | New tab (tmux window equivalent) |
+| `n` / `p` | Next / previous tab |
+| `1`–`9` | Switch workspace by number |
+| `(` / `)` | Previous / next workspace |
+| `←→↑↓` | Navigate panes |
+| `z` | Zoom / magnify pane |
+| `x` | Close pane |
+| `b` / `B` | New browser pane right / below |
+| `f` / `F` | New file browser pane right / below |
+| `w` | Toggle widget panel |
+| `a` | Toggle Wave AI panel |
+| `I` | Toggle Agent notification panel |
+| `U` | Jump to latest unread agent notification |
+| `N` / `$` / `X` | New / rename / delete workspace |
+| `s` | Open workspace picker |
+| `{` / `}` | Swap panes left / right |
+| `?` | Open URL prompt in focused browser pane |
+| `:` | Enter `wsh` command |
 
-Wave also supports durable SSH sessions that survive network interruptions and restarts, with automatic reconnection. Edit remote files with a built-in graphical editor and preview files inline without leaving the terminal.
+A **BottomBar** input component appears for prompted commands (`:`, `?`). A **WorkspacePickerModal** (`s`) lists all workspaces for fast switching.
 
-![WaveTerm Screenshot](./assets/wave-screenshot.webp)
+The focused block border and resize handles now use a dedicated `--block-border-color` CSS variable (previously shared with `accent-color`), keeping the focus indicator visually distinct.
 
-## Key Features
+A new `app:hidewidgetpanel` setting (also toggleable from the tab bar context menu) lets you permanently hide the right-side widget panel.
 
-- Wave AI - Context-aware terminal assistant that reads your terminal output, analyzes widgets, and performs file operations
-- Durable SSH Sessions - Remote terminal sessions survive connection interruptions, network changes, and Wave restarts with automatic reconnection
-- Flexible drag & drop interface to organize terminal blocks, editors, web browsers, and AI assistants
-- Built-in editor for editing remote files with syntax highlighting and modern editor features
-- Rich file preview system for remote files (markdown, images, video, PDFs, CSVs, directories)
-- Quick full-screen toggle for any block - expand terminals, editors, and previews for better visibility, then instantly return to multi-block view
-- AI chat widget with support for multiple models (OpenAI, Claude, Azure, Perplexity, Ollama)
-- Command Blocks for isolating and monitoring individual commands
-- One-click remote connections with full terminal and file system access
-- Secure secret storage using native system backends - store API keys and credentials locally, access them across SSH sessions
-- Rich customization including tab themes, terminal styles, and background images
-- Powerful `wsh` command system for managing your workspace from the CLI and sharing data between terminal sessions
-- Connected file management with `wsh file` - seamlessly copy and sync files between local and remote SSH hosts
+---
 
-## Wave AI
+## System Stats in Tab Bar
 
-Wave AI is your context-aware terminal assistant with access to your workspace:
+CPU usage, memory usage, and 1-minute load average are shown in the right side of the tab bar. Each metric is colour-coded:
 
-- **Terminal Context**: Reads terminal output and scrollback for debugging and analysis
-- **File Operations**: Read, write, and edit files with automatic backups and user approval
-- **CLI Integration**: Use `wsh ai` to pipe output or attach files directly from the command line
-- **BYOK Support**: Bring your own API keys for OpenAI, Claude, Gemini, Azure, and other providers
-- **Local Models**: Run local models with Ollama, LM Studio, and other OpenAI-compatible providers
-- **Free Beta**: Included AI credits while we refine the experience
-- **Coming Soon**: Command execution (with approval)
+| Metric | Yellow | Red |
+|--------|--------|-----|
+| CPU | ≥ 60 % | ≥ 85 % |
+| Memory | ≥ 70 % | ≥ 90 % |
+| Load avg | ≥ 1.5 × CPU count | ≥ 2 × CPU count |
 
-Learn more in our [Wave AI documentation](https://docs.waveterm.dev/waveai) and [Wave AI Modes documentation](https://docs.waveterm.dev/waveai-modes).
+Stats are polled via the existing `sysinfo` RPC and update every few seconds.
 
-## Installation
+---
 
-Wave Terminal works on macOS, Linux, and Windows.
+## Browser Block: Auto-focus URL Field
 
-Platform-specific installation instructions can be found [here](https://docs.waveterm.dev/gettingstarted).
+Opening a new browser block automatically focuses the URL input field so you can type an address immediately without an extra click.
 
-You can also install Wave Terminal directly from: [www.waveterm.dev/download](https://www.waveterm.dev/download).
+---
 
-### Minimum requirements
+## Agent Notification Panel
 
-Wave Terminal runs on the following platforms:
+A collapsible panel on the left side of the workspace aggregates notifications from AI coding agents running in terminal panes. It surfaces completions, errors, and questions without requiring you to watch each terminal.
 
-- macOS 11 or later (arm64, x64)
-- Windows 10 1809 or later (x64)
-- Linux based on glibc-2.28 or later (Debian 10, RHEL 8, Ubuntu 20.04, etc.) (arm64, x64)
+### Panel behaviour
 
-The WSH helper runs on the following platforms:
+- Notifications carry a **status-coloured unread background**: green (completion), yellow (question), red (error), blue (info).
+- Each entry shows an `HH:MM` timestamp, the agent name, and optional branch / workdir metadata.
+- Clicking a notification **focuses the originating block** and switches workspace if needed. A stored `pendingBlockFlash` key causes the block border to double-flash when the renderer loads.
+- When a notification arrives and its block is visible in the current tab the block border **triple-flashes** to draw attention.
+- Read state is persisted to `localStorage` and synced across renderers via storage events.
+- The backend suppresses a completion notification that would overwrite a recent error (within 10 s).
 
-- macOS 11 or later (arm64, x64)
-- Windows 10 or later (x64)
-- Linux Kernel 2.6.32 or later (x64), Linux Kernel 3.1 or later (arm64)
+### `wsh agentnotify`
 
-## Roadmap
+Manual / scripted notifications:
 
-Wave is constantly improving! Our roadmap will be continuously updated with our goals for each release. You can find it [here](./ROADMAP.md).
+```sh
+wsh agentnotify "Message text" \
+  --agent claude \
+  --status completion|error|question|info \
+  --branch "$(git branch --show-current)" \
+  --workdir "$PWD" \
+  --worktree "$(git rev-parse --show-toplevel)" \
+  --notifyid "my-stable-id" \
+  --beep
+```
 
-Want to provide input to our future releases? Connect with us on [Discord](https://discord.gg/XfvZ334gwU) or open a [Feature Request](https://github.com/wavetermdev/waveterm/issues/new/choose)!
+`--notifyid` causes an upsert — subsequent calls with the same ID update the existing entry rather than appending a new one.
 
-## Links
+---
 
-- Homepage &mdash; https://www.waveterm.dev
-- Download Page &mdash; https://www.waveterm.dev/download
-- Documentation &mdash; https://docs.waveterm.dev
-- X &mdash; https://x.com/wavetermdev
-- Discord Community &mdash; https://discord.gg/XfvZ334gwU
+### Claude Code configuration
 
-## Building from Source
+**File:** `~/.claude/settings.json`
 
-See [Building Wave Terminal](BUILD.md).
+```json
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          { "type": "command", "command": "wsh agenthook claude stop" }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "matcher": "permission_prompt",
+        "hooks": [
+          { "type": "command", "command": "wsh agenthook claude notification" }
+        ]
+      },
+      {
+        "matcher": "elicitation_dialog",
+        "hooks": [
+          { "type": "command", "command": "wsh agenthook claude notification" }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "AskUserQuestion",
+        "hooks": [
+          { "type": "command", "command": "wsh agenthook claude notification" }
+        ]
+      }
+    ],
+    "StopFailure": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "wsh agentnotify \"Task failed\" --status error --beep --workdir \"$PWD\" --branch \"$(git branch --show-current 2>/dev/null)\" --worktree \"$(git rev-parse --show-toplevel 2>/dev/null)\""
+          }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "wsh agentnotify \"Command failed\" --status error --beep --workdir \"$PWD\" --branch \"$(git branch --show-current 2>/dev/null)\" --worktree \"$(git rev-parse --show-toplevel 2>/dev/null)\""
+          }
+        ]
+      }
+    ]
+  }
+}
+```
 
-## Contributing
+`wsh agenthook claude stop` reads the Claude Code hook JSON from stdin, extracts the last assistant message for completions, and extracts the question text for `permission_prompt` / `elicitation_dialog` / `AskUserQuestion` prompts — no shell or `jq` required. It uses the originating block's ORef as a stable notify ID so each terminal pane has exactly one panel slot.
 
-Wave uses GitHub Issues for issue tracking.
+---
 
-Find more information in our [Contributions Guide](CONTRIBUTING.md), which includes:
+### opencode configuration
 
-- [Ways to contribute](CONTRIBUTING.md#contributing-to-wave-terminal)
-- [Contribution guidelines](CONTRIBUTING.md#before-you-start)
+**File:** `~/.config/opencode/plugins/waveterm.js`
 
-### Sponsoring Wave ❤️
+opencode uses a native plugin API rather than shell hooks, so the integration is a JavaScript plugin placed in the plugins directory:
 
-If Wave Terminal is useful to you or your company, consider sponsoring development.
+```js
+// WaveTerm agent notification plugin for opencode.
+// Install: place this file in ~/.config/opencode/plugins/
+// Requires: wsh in PATH (installed with WaveTerm)
 
-Sponsorship helps support the time spent building and maintaining the project.
+export const WavetermPlugin = async ({ $, worktree }) => {
+  let lastText = ""
+  let lastToolError = ""
 
-- https://github.com/sponsors/wavetermdev
+  // One stable notify ID per project so "question" → "completion" updates the same entry.
+  const notifyId = `opencode:${worktree || "default"}`
 
-## License
+  async function getBranch() {
+    if (!worktree) return ""
+    try { return (await $`git -C ${worktree} branch --show-current`.text()).trim() }
+    catch { return "" }
+  }
 
-Wave Terminal is licensed under the Apache-2.0 License. For more information on our dependencies, see [here](./ACKNOWLEDGEMENTS.md).
+  function truncate(text, max) {
+    const collapsed = text.replace(/\s+/g, " ").trim()
+    return [...collapsed].slice(0, max).join("")
+  }
+
+  async function sendNotify(message, status, { beep = false } = {}) {
+    const branch = await getBranch()
+    const args = ["agentnotify", "--agent", "opencode", "--status", status, "--notifyid", notifyId]
+    if (worktree) args.push("--workdir", worktree, "--worktree", worktree)
+    if (branch)   args.push("--branch", branch)
+    if (beep)     args.push("--beep")
+    args.push(message)
+    try { await $`wsh ${args}` } catch { /* not inside a WaveTerm session */ }
+  }
+
+  return {
+    event: async ({ event }) => {
+      if (event.type === "question.asked") {
+        const q = event.properties?.questions?.[0]
+        await sendNotify(truncate(q?.question || q?.header || "Input required", 300), "question", { beep: true })
+      }
+      if (event.type === "message.part.updated") {
+        const part = event.properties?.part
+        if (part?.type === "text" && part?.text) lastText = part.text
+        if (part?.type === "tool" && part?.state?.status === "error")
+          lastToolError = part.state.error || "Tool error"
+        if (part?.type === "tool" && part?.state?.status === "completed") {
+          const exit = part.state.metadata?.exit
+          if (exit !== undefined && exit !== 0) lastToolError = (part.state.output || `Exit code ${exit}`).trim()
+        }
+      }
+      if (event.type === "session.idle") {
+        if (lastToolError) {
+          const msg = truncate(lastToolError, 300); lastToolError = ""; lastText = ""
+          await sendNotify(msg, "error")
+        } else {
+          const msg = truncate(lastText || "Session complete", 300); lastText = ""
+          await sendNotify(msg, "completion")
+        }
+      }
+      if (event.type === "session.error") {
+        const errMsg = event.properties?.error?.message || "Session error"
+        lastText = ""; lastToolError = ""
+        await sendNotify(truncate(errMsg, 300), "error")
+      }
+    },
+  }
+}
+```
+
+---
+
+### Codex CLI configuration
+
+Codex hooks are behind a feature flag. First enable them:
+
+**File:** `~/.codex/config.toml`
+
+```toml
+[features]
+codex_hooks = true
+```
+
+Then wire up the hook handlers:
+
+**File:** `~/.codex/hooks.json`
+
+```json
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          { "type": "command", "command": "wsh agenthook codex stop" }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          { "type": "command", "command": "wsh agenthook codex posttooluse" }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          { "type": "command", "command": "wsh agenthook codex userpromptsubmit" }
+        ]
+      }
+    ]
+  }
+}
+```
+
+What each hook does:
+
+- `Stop` — sends the final completion notification; reclassifies as `question` or `error` when the final assistant message clearly indicates that state.
+- `PostToolUse` (Bash matcher) — raises an `error` notification for high-confidence command failures.
+- `UserPromptSubmit` — clears the active notification when you respond, so stale `question` / `error` states do not persist.
+
+#### Optional: question detection via PTY wrapper
+
+Codex does not currently expose a first-class hook for "the agent is waiting for input". To cover that gap an optional PTY wrapper watches live terminal output for approval or input prompts:
+
+```sh
+wsh agenthook codex run -- codex
+```
+
+For convenience, add a shell alias:
+
+```sh
+alias codex='wsh agenthook codex run -- codex'
+```
+
+The wrapper proxies the interactive session through a PTY (so terminal behaviour is unchanged), injects a stable notify ID so all hook events collapse onto one Agent panel entry, and emits a best-effort `question` notification with a beep when a prompt is detected.
+
+---
+
+## Summary of new files
+
+| Path | Description |
+|------|-------------|
+| `cmd/wsh/cmd/wshcmd-agenthook.go` | `wsh agenthook` — Claude, opencode, and Codex hook handlers |
+| `cmd/wsh/cmd/wshcmd-agentnotify.go` | `wsh agentnotify` — manual notification sender |
+| `frontend/app/agentnotifypanel/` | Agent panel React components |
+| `frontend/app/store/agentnotify.ts` | Agent notification store and read-state logic |
+| `frontend/app/bottombar/` | BottomBar prompted-input component |
+| `frontend/app/modals/workspacepickermodal.tsx` | Workspace picker modal |
+| `frontend/app/tab/tabbar-stats.tsx` | System stats tab bar component |
+| `pkg/wcore/agentnotify.go` | Backend notification dispatch and error-suppression logic |
+| `pkg/baseds/agentnotify.go` | Persistent notification storage |
+| `docs/docs/codex.mdx` | Codex integration documentation |
