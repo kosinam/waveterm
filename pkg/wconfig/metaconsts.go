@@ -14,6 +14,7 @@ const (
 	ConfigKey_AppCtrlVPaste                  = "app:ctrlvpaste"
 	ConfigKey_AppConfirmQuit                 = "app:confirmquit"
 	ConfigKey_AppHideAiButton                = "app:hideaibutton"
+	ConfigKey_AppFullscreenShowSysStats      = "app:fullscreensysstats"
 	ConfigKey_AppHideWidgetPanel             = "app:hidewidgetpanel"
 	ConfigKey_AppChordPrefix                 = "app:chordprefix"
 	ConfigKey_AppDisableCtrlShiftArrows      = "app:disablectrlshiftarrows"

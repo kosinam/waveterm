@@ -29,12 +29,14 @@
         "app:hideaibutton": {
           "type": "boolean"
         },
+        "app:fullscreensysstats": {
+          "type": "boolean"
+        },
         "app:hidewidgetpanel": {
           "type": "boolean"
         },
         "app:chordprefix": {
-          "type": "string",
-          "description": "Key prefix for tmux-style chord keybindings (e.g. \"Ctrl:a\", \"Ctrl:b\"). Default: \"Ctrl:a\"."
+          "type": "string"
         },
         "app:disablectrlshiftarrows": {
           "type": "boolean"

@@ -166,6 +166,7 @@ const TabBar = memo(({ workspace, noTabs }: TabBarProps) => {
     const showMenuBar = useAtomValue(env.getSettingsKeyAtom("window:showmenubar"));
     const confirmClose = useAtomValue(env.getSettingsKeyAtom("tab:confirmclose")) ?? false;
     const hideAiButton = useAtomValue(env.getSettingsKeyAtom("app:hideaibutton"));
+    const showSysStats = useAtomValue(env.getSettingsKeyAtom("app:fullscreensysstats")) ?? true;
     const appUpdateStatus = useAtomValue(env.atoms.updaterStatusAtom);
 
     let prevDelta: number;
@@ -688,7 +689,7 @@ const TabBar = memo(({ workspace, noTabs }: TabBarProps) => {
             </button>
             <div className="flex-1" />
             <div ref={rightContainerRef} className="flex flex-row gap-1 items-end">
-                <TabBarStats />
+                {isFullScreen && showSysStats && <TabBarStats />}
                 <UpdateStatusBanner />
                 <div
                     className="h-full shrink-0 z-window-drag"

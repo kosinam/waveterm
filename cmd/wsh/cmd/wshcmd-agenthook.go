@@ -617,11 +617,8 @@ func classifyCodexStopStatus(message string) string {
 	if message == "" {
 		return ""
 	}
-	for _, re := range codexQuestionTextPatterns {
-		if re.MatchString(message) {
-			return "question"
-		}
-	}
+	// The stop hook fires when a turn is complete, so question patterns are not
+	// meaningful here — don't mis-classify end-of-turn summary text as approvals.
 	for _, re := range codexErrorTextPatterns {
 		if re.MatchString(message) {
 			return "error"
@@ -811,8 +808,10 @@ func (d *codexQuestionDetector) Observe(chunk []byte) (string, bool) {
 	}
 	for _, re := range codexQuestionPatterns {
 		if re.MatchString(d.tail) {
+			msg := codexQuestionMessage(d.tail)
 			d.lastSent = now
-			return codexQuestionMessage(d.tail), true
+			d.tail = "" // reset so stale approval text can't re-trigger after cooldown
+			return msg, true
 		}
 	}
 	return "", false
@@ -987,6 +986,9 @@ func agentHookCodexRun(cmd *cobra.Command, args []string) (rtnErr error) {
 		}
 		return fmt.Errorf("reading codex output: %v", readErr)
 	}
+
+	// Replace any pending question notification with completion now that the session has ended.
+	_ = sendHookNotificationForAgentWithNotifyID("Session complete", os.Getenv("PWD"), "completion", "codex", notifyID)
 
 	waitErr := proxyCmd.Wait()
 	if waitErr == nil {

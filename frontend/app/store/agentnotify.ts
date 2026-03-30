@@ -249,8 +249,16 @@ export function setupAgentNotifySubscription(): void {
 
             const incoming = data.notification;
             const existing = globalStore.get(agentNotificationsAtom).find((n) => n.notifyid === incoming.notifyid);
-            if (existing == null || !areAgentNotificationsEqual(existing, incoming)) {
+            if (existing == null) {
                 clearAgentNotificationReadState(incoming.notifyid);
+            } else if (!areAgentNotificationsEqual(existing, incoming)) {
+                // Only re-mark unread when the new status requires user attention.
+                // Transitions to completion/info should not re-alert (e.g. stop hook
+                // firing after user already responded to a question).
+                const attentionStatuses = new Set(["question", "waiting", "error"]);
+                if (attentionStatuses.has(incoming.status ?? "")) {
+                    clearAgentNotificationReadState(incoming.notifyid);
+                }
             }
             globalStore.set(agentNotificationsAtom, (prev) => {
                 // Replace if same notifyid (updated status), otherwise insert and keep oldest-first order
