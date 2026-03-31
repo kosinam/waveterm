@@ -1,6 +1,29 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { detectCodexQuestionPrompt, detectCodexToolApprovalPrompt, isClaudeCodeCommand, isCodexCommand } from "./osc-handlers";
+const { agentNotifyCommand, clearAgentNotificationCommand } = vi.hoisted(() => ({
+    agentNotifyCommand: vi.fn().mockResolvedValue(undefined),
+    clearAgentNotificationCommand: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock("@/app/store/wshclientapi", () => ({
+    RpcApi: {
+        AgentNotifyCommand: agentNotifyCommand,
+        ClearAgentNotificationCommand: clearAgentNotificationCommand,
+    },
+}));
+
+import {
+    clearCodexApprovalNotification,
+    isClaudeCodeCommand,
+    isCodexCommand,
+    markCodexTurnCompleted,
+    observeTerminalOutputForCodexApproval,
+    setRunningShellCommand,
+} from "./osc-handlers";
+
+async function flushMicrotasks(): Promise<void> {
+    await Promise.resolve();
+}
 
 describe("isClaudeCodeCommand", () => {
     it("matches direct Claude Code invocations", () => {
@@ -42,85 +65,185 @@ describe("isCodexCommand", () => {
     });
 });
 
-describe("detectCodexToolApprovalPrompt", () => {
-    it("matches the Codex tool approval selector", () => {
-        const prompt = `Would you like to run the following command?
-
-Reason: Do you want to allow me to run curl -I https://example.com?
-
-$ curl -I https://example.com
-
-1. Yes, proceed (y)
-2. Yes, and don't ask again for commands that start with curl -I (p)
-3. No, and tell Codex what to do differently (esc)`;
-        expect(detectCodexToolApprovalPrompt(prompt)).toBe(true);
+describe("Codex pause detection", () => {
+    beforeEach(() => {
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date("2026-03-31T12:00:00Z"));
+        agentNotifyCommand.mockClear();
+        clearAgentNotificationCommand.mockClear();
+        setRunningShellCommand("b1", "codex");
+        setRunningShellCommand("b2", "codex");
+        setRunningShellCommand("b1", null);
+        setRunningShellCommand("b2", null);
     });
 
-    it("ignores generic numbered lists", () => {
-        const prompt = `Would you like me to proceed with the next verification step?
-
-1. Generate a minimal end-of-turn question prompt only
-2. Summarize the exact stop-classifier patterns now in use
-3. Stop here and wait for your confirmation`;
-        expect(detectCodexToolApprovalPrompt(prompt)).toBe(false);
+    afterEach(async () => {
+        clearCodexApprovalNotification("b1");
+        clearCodexApprovalNotification("b2");
+        markCodexTurnCompleted("b1");
+        markCodexTurnCompleted("b2");
+        setRunningShellCommand("b1", null);
+        setRunningShellCommand("b2", null);
+        await flushMicrotasks();
+        vi.runOnlyPendingTimers();
+        vi.useRealTimers();
     });
 
-    it("handles terminal escape sequences around the selector", () => {
-        const prompt =
-            "\u001b[33mWould you like to run the following command?\u001b[0m\r\n\r\n$ git commit -m \"x\"\r\n\r\n1. Yes, proceed (y)\r\n2. Yes, and don't ask again for commands that start with git commit (p)\r\n3. No, and tell Codex what to do differently (esc)";
-        expect(detectCodexToolApprovalPrompt(prompt)).toBe(true);
+    it("raises a question notification after 5s of Codex output silence", async () => {
+        observeTerminalOutputForCodexApproval("b1", "Working...\r\n");
+
+        vi.advanceTimersByTime(4999);
+        await flushMicrotasks();
+        expect(agentNotifyCommand).not.toHaveBeenCalled();
+
+        vi.advanceTimersByTime(1);
+        await flushMicrotasks();
+        expect(agentNotifyCommand).toHaveBeenCalledTimes(1);
+        expect(agentNotifyCommand.mock.calls[0]?.[1]).toMatchObject({
+            notifyid: "codex-question:b1",
+            agent: "codex",
+            status: "question",
+            message: "Codex output paused",
+        });
     });
 
-    it("matches approvals without the persistent allow option", () => {
-        const prompt = `Would you like to run the following command?
+    it("does not arm for non-Codex commands", async () => {
+        observeTerminalOutputForCodexApproval("b1", "Running tests...\r\n");
 
-$ npm test
-
-1. Yes, proceed (y)
-2. No, and tell Codex what to do differently (esc)`;
-        expect(detectCodexToolApprovalPrompt(prompt)).toBe(true);
+        vi.advanceTimersByTime(5000);
+        await flushMicrotasks();
+        expect(agentNotifyCommand).not.toHaveBeenCalled();
     });
 
-    it("ignores prompts without a deny option", () => {
-        const prompt = `Would you like to run the following command?
+    it("clears the notification when output resumes", async () => {
+        observeTerminalOutputForCodexApproval("b1", "Working...\r\n");
 
-$ npm test
+        vi.advanceTimersByTime(5000);
+        await flushMicrotasks();
+        expect(agentNotifyCommand).toHaveBeenCalledTimes(1);
 
-1. Yes, proceed (y)
-2. Show diff`;
-        expect(detectCodexToolApprovalPrompt(prompt)).toBe(false);
-    });
-});
-
-describe("detectCodexQuestionPrompt", () => {
-    it("matches the approval selector as a high-confidence question", () => {
-        const prompt = `Would you like to run the following command?
-
-Reason: Do you want to allow me to run curl -I https://example.com?
-
-$ curl -I https://example.com
-
-1. Yes, proceed (y)
-2. Yes, and don't ask again for commands that start with curl -I (p)
-3. No, and tell Codex what to do differently (esc)`;
-        expect(detectCodexQuestionPrompt(prompt)?.message).toBe("Approval required");
+        observeTerminalOutputForCodexApproval("b1", "Still working...\r\n");
+        await flushMicrotasks();
+        expect(clearAgentNotificationCommand).toHaveBeenCalledWith(undefined, "codex-question:b1");
     });
 
-    it("matches generic explicit-choice prompts", () => {
-        const prompt = `Would you like me to proceed with the next verification step?
+    it("clears the notification when the active turn ends", async () => {
+        observeTerminalOutputForCodexApproval("b1", "Working...\r\n");
 
-1. Generate a minimal end-of-turn question prompt only
-2. Summarize the exact stop-classifier patterns now in use
-3. Stop here and wait for your confirmation`;
-        expect(detectCodexQuestionPrompt(prompt)?.message).toBe("Would you like me to proceed with the next verification step?");
+        vi.advanceTimersByTime(5000);
+        await flushMicrotasks();
+        expect(agentNotifyCommand).toHaveBeenCalledTimes(1);
+
+        clearCodexApprovalNotification("b1");
+        observeTerminalOutputForCodexApproval("b1", "");
+        await flushMicrotasks();
+        expect(clearAgentNotificationCommand).toHaveBeenCalledWith(undefined, "codex-question:b1");
     });
 
-    it("ignores explanatory numbered lists without a prompt", () => {
-        const prompt = `Implementation notes:
+    it("reuses the same notify id across repeated pauses in one turn", async () => {
+        observeTerminalOutputForCodexApproval("b1", "Working...\r\n");
 
-1. Refactor the notification store
-2. Update the keybinding docs
-3. Add regression tests`;
-        expect(detectCodexQuestionPrompt(prompt)).toBeNull();
+        vi.advanceTimersByTime(5000);
+        await flushMicrotasks();
+
+        observeTerminalOutputForCodexApproval("b1", "Working...\r\n");
+        await flushMicrotasks();
+
+        vi.advanceTimersByTime(5000);
+        await flushMicrotasks();
+
+        expect(agentNotifyCommand).toHaveBeenCalledTimes(2);
+        expect(agentNotifyCommand.mock.calls[0]?.[1]).toMatchObject({ notifyid: "codex-question:b1" });
+        expect(agentNotifyCommand.mock.calls[1]?.[1]).toMatchObject({ notifyid: "codex-question:b1" });
+    });
+
+    it("suppresses pause notifications after the turn is marked completed", async () => {
+        observeTerminalOutputForCodexApproval("b1", "Working...\r\n");
+        markCodexTurnCompleted("b1");
+
+        vi.advanceTimersByTime(5000);
+        await flushMicrotasks();
+
+        expect(agentNotifyCommand).not.toHaveBeenCalled();
+    });
+
+    it("clears an active pause notification when the turn is marked completed", async () => {
+        observeTerminalOutputForCodexApproval("b1", "Working...\r\n");
+
+        vi.advanceTimersByTime(5000);
+        await flushMicrotasks();
+        expect(agentNotifyCommand).toHaveBeenCalledTimes(1);
+
+        markCodexTurnCompleted("b1");
+        await flushMicrotasks();
+
+        expect(clearAgentNotificationCommand).toHaveBeenCalledWith(undefined, "codex-question:b1");
+    });
+
+    it("re-arms pause detection when a new Codex command starts after completion", async () => {
+        markCodexTurnCompleted("b1");
+        observeTerminalOutputForCodexApproval("b1", "Workin\r\n");
+
+        vi.advanceTimersByTime(5000);
+        await flushMicrotasks();
+        expect(agentNotifyCommand).not.toHaveBeenCalled();
+
+        setRunningShellCommand("b1", "codex");
+        observeTerminalOutputForCodexApproval("b1", "Workin\r\n");
+
+        vi.advanceTimersByTime(5000);
+        await flushMicrotasks();
+        expect(agentNotifyCommand).toHaveBeenCalledTimes(1);
+    });
+
+    it("re-arms pause detection from a strong Working status line after completion", async () => {
+        markCodexTurnCompleted("b1");
+
+        observeTerminalOutputForCodexApproval("b1", "•Working(0s • esc to interrupt)\r\n");
+
+        vi.advanceTimersByTime(5000);
+        await flushMicrotasks();
+        expect(agentNotifyCommand).toHaveBeenCalledTimes(1);
+    });
+
+    it("keeps suppression for non-status visible text after completion", async () => {
+        markCodexTurnCompleted("b1");
+
+        observeTerminalOutputForCodexApproval("b1", "Would you like to run the following command?\r\n");
+
+        vi.advanceTimersByTime(5000);
+        await flushMicrotasks();
+        expect(agentNotifyCommand).not.toHaveBeenCalled();
+    });
+
+    it("refreshes the timer from partial Working heartbeat fragments", async () => {
+        observeTerminalOutputForCodexApproval("b1", "Worki\r\n");
+
+        vi.advanceTimersByTime(3000);
+        observeTerminalOutputForCodexApproval("b1", "Workin\r\n");
+
+        vi.advanceTimersByTime(3000);
+        await flushMicrotasks();
+        expect(agentNotifyCommand).not.toHaveBeenCalled();
+
+        vi.advanceTimersByTime(2000);
+        await flushMicrotasks();
+        expect(agentNotifyCommand).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not arm from non-heartbeat output after a heartbeat pause notification clears", async () => {
+        observeTerminalOutputForCodexApproval("b1", "Working...\r\n");
+
+        vi.advanceTimersByTime(5000);
+        await flushMicrotasks();
+        expect(agentNotifyCommand).toHaveBeenCalledTimes(1);
+
+        observeTerminalOutputForCodexApproval("b1", "Would you like to run the following command?\r\n");
+        await flushMicrotasks();
+
+        vi.advanceTimersByTime(5000);
+        await flushMicrotasks();
+        expect(agentNotifyCommand).toHaveBeenCalledTimes(1);
+        expect(clearAgentNotificationCommand).toHaveBeenCalledWith(undefined, "codex-question:b1");
     });
 });

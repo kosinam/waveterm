@@ -9,6 +9,7 @@ import {
     getBlockTermDurableAtom,
     getOverrideConfigAtom,
     globalStore,
+    isDev,
     recordTEvent,
     WOS,
 } from "@/store/global";
@@ -30,14 +31,7 @@ const CodexRegex = /^codex\b/;
 const OpencodeRegex = /^opencode\b/;
 const LongRunningShellNotificationThresholdMs = 10_000;
 const CodexQuestionNotifyIdPrefix = "codex-question:";
-const CodexApprovalBufferMaxLen = 12_000;
-const CodexApprovalPauseMs = 1000;
-const CodexQuestionPauseMs = 3000;
-
-type CodexQuestionPrompt = {
-    message: string;
-    signature: string;
-};
+const CodexPauseNotificationMs = 5000;
 
 type RunningShellCommand = {
     command: string | null;
@@ -45,10 +39,40 @@ type RunningShellCommand = {
 };
 
 const runningShellCommands = new Map<string, RunningShellCommand>();
-const codexQuestionBuffers = new Map<string, string>();
-const codexQuestionActive = new Set<string>();
 const codexQuestionPendingTimers = new Map<string, number>();
-const codexQuestionActiveSignatures = new Map<string, string>();
+const codexQuestionActive = new Set<string>();
+const codexHeartbeatLastSeenTs = new Map<string, number>();
+const codexTurnCompleted = new Set<string>();
+
+function getCodexPauseDebugInfo(rawData: string): {
+    sanitized: string;
+    preview: string;
+    rawLength: number;
+    classification: "empty-after-sanitize" | "whitespace-only" | "visible-text";
+} {
+    const sanitized = stripTerminalControlSequences(rawData);
+    const trimmed = sanitized.trim();
+    const preview = sanitized.replace(/\s+/g, " ").trim().slice(0, 160);
+    let classification: "empty-after-sanitize" | "whitespace-only" | "visible-text" = "visible-text";
+    if (sanitized.length === 0) {
+        classification = "empty-after-sanitize";
+    } else if (trimmed.length === 0) {
+        classification = "whitespace-only";
+    }
+    return {
+        sanitized,
+        preview,
+        rawLength: rawData.length,
+        classification,
+    };
+}
+
+function logCodexPauseDebug(blockId: string, message: string, data?: Record<string, unknown>): void {
+    if (typeof window === "undefined" || !isDev()) {
+        return;
+    }
+    console.log(`[codex-pause] ${message}`, { blockId, ...data });
+}
 
 type Osc16162Command =
     | { command: "A"; data: Record<string, never> }
@@ -148,126 +172,15 @@ function stripTerminalControlSequences(data: string): string {
         .replace(/\r/g, "\n");
 }
 
-export function detectCodexToolApprovalPrompt(data: string): boolean {
-    return looksLikeCodexApprovalPromptCandidate(data);
+function isActiveCodexTurn(blockId: string): boolean {
+    return codexHeartbeatLastSeenTs.has(blockId);
 }
 
-function looksLikeCodexApprovalPromptCandidate(data: string): boolean {
-    const sanitized = stripTerminalControlSequences(data);
-    const normalized = sanitized.replace(/\u00a0/g, " ");
-    if (!/Would you like to run the following command\?/i.test(normalized)) {
-        return false;
-    }
-    if (!/1\.\s+Yes,\s*proceed/i.test(normalized)) {
-        return false;
-    }
-    if (!/\b(?:2|3)\.\s+No,\s+and tell Codex what to do differently/i.test(normalized)) {
-        return false;
-    }
-    const hasSecondaryOption = /\b2\.\s+/i.test(normalized);
-    const hasPersistentAllowOption = /don't ask again/i.test(normalized);
-    return hasSecondaryOption || hasPersistentAllowOption;
+function isCodexTurnSuppressed(blockId: string): boolean {
+    return codexTurnCompleted.has(blockId);
 }
 
-function collapsePromptLine(text: string): string {
-    return text.replace(/\s+/g, " ").trim();
-}
-
-function hasExplicitChoiceLines(text: string): boolean {
-    const matches = [...text.matchAll(/(?:^|\n)\s*([1-9])\.\s+.+$/gm)];
-    const numbers = new Set(matches.map((match) => match[1]));
-    if (numbers.size >= 2) {
-        return true;
-    }
-    const inlineMatches = [...text.matchAll(/(?:^|\s)([1-9])\.\s+\S/gm)];
-    return new Set(inlineMatches.map((match) => match[1])).size >= 2;
-}
-
-function looksLikeCodexPromptChunk(text: string): boolean {
-    return (
-        /Would you like/i.test(text) ||
-        /What would you like me to do/i.test(text) ||
-        /How would you like me to proceed/i.test(text) ||
-        /Reply with a number/i.test(text) ||
-        /Yes,\s*proceed/i.test(text) ||
-        /don't ask again/i.test(text) ||
-        /No,\s+and tell Codex/i.test(text) ||
-        hasExplicitChoiceLines(text)
-    );
-}
-
-export function detectCodexQuestionPrompt(data: string): CodexQuestionPrompt | null {
-    const approvalPrompt = detectCodexToolApprovalPrompt(data);
-    if (approvalPrompt) {
-        return { message: "Approval required", signature: "approval:pending" };
-    }
-
-    const sanitized = stripTerminalControlSequences(data);
-    const normalized = sanitized.replace(/\u00a0/g, " ");
-    if (!hasExplicitChoiceLines(normalized)) {
-        return null;
-    }
-    if (
-        !/\?$/.test(stringsLastNonEmptyLine(normalized)) &&
-        !/Would you like/i.test(normalized) &&
-        !/What would you like me to do/i.test(normalized) &&
-        !/How would you like me to proceed/i.test(normalized) &&
-        !/Reply with a number/i.test(normalized)
-    ) {
-        return null;
-    }
-    const message = extractCodexQuestionMessage(normalized) || "Codex is waiting for input";
-    return { message, signature: `prompt:${collapsePromptLine(normalized).slice(0, 500)}` };
-}
-
-function extractCodexQuestionMessage(text: string): string {
-    const lines = text
-        .split("\n")
-        .map((line) => collapsePromptLine(line))
-        .filter(Boolean);
-    for (let idx = lines.length - 1; idx >= 0; idx--) {
-        const line = lines[idx];
-        if (/^[1-9]\.\s+/.test(line)) {
-            continue;
-        }
-        if (/^\$/.test(line) || /^Reason:/i.test(line)) {
-            continue;
-        }
-        if (
-            /\?$/.test(line) ||
-            /Would you like/i.test(line) ||
-            /What would you like me to do/i.test(line) ||
-            /How would you like me to proceed/i.test(line) ||
-            /Reply with a number/i.test(line)
-        ) {
-            return line;
-        }
-    }
-    return stringsFirstNonEmptyLine(text);
-}
-
-function stringsFirstNonEmptyLine(text: string): string {
-    for (const line of text.split("\n")) {
-        const trimmed = line.trim();
-        if (trimmed) {
-            return trimmed;
-        }
-    }
-    return "";
-}
-
-function stringsLastNonEmptyLine(text: string): string {
-    const lines = text.split("\n");
-    for (let idx = lines.length - 1; idx >= 0; idx--) {
-        const trimmed = lines[idx].trim();
-        if (trimmed) {
-            return trimmed;
-        }
-    }
-    return "";
-}
-
-function createCodexQuestionNotification(blockId: string, prompt: CodexQuestionPrompt): AgentNotification {
+function createCodexQuestionNotification(blockId: string): AgentNotification {
     return {
         notifyid: getCodexQuestionNotifyId(blockId),
         oref: `block:${blockId}`,
@@ -276,7 +189,7 @@ function createCodexQuestionNotification(blockId: string, prompt: CodexQuestionP
         windowid: "",
         agent: "codex",
         status: "question",
-        message: prompt.message,
+        message: "Codex output paused",
         timestamp: Date.now(),
     };
 }
@@ -284,72 +197,164 @@ function createCodexQuestionNotification(blockId: string, prompt: CodexQuestionP
 function clearCodexQuestionPending(blockId: string): void {
     const timerId = codexQuestionPendingTimers.get(blockId);
     if (timerId != null) {
-        window.clearTimeout(timerId);
+        globalThis.clearTimeout(timerId);
         codexQuestionPendingTimers.delete(blockId);
     }
 }
 
 function resetCodexQuestionTracking(blockId: string): void {
-    codexQuestionBuffers.delete(blockId);
     clearCodexQuestionPending(blockId);
+    codexHeartbeatLastSeenTs.delete(blockId);
+}
+
+function matchesCodexWorkingHeartbeat(sanitized: string): boolean {
+    const tokens = sanitized.match(/[A-Za-z]+/g) ?? [];
+    return tokens.some((token) => {
+        const normalized = token.toLowerCase();
+        return normalized.length >= 5 && "working".startsWith(normalized);
+    });
+}
+
+function matchesStrongCodexTurnStart(sanitized: string): boolean {
+    const lines = sanitized
+        .split("\n")
+        .map((line) => line.trim())
+        .filter((line) => line.length > 0);
+    return lines.some((line) => /^[•>*-]?\s*working(?:\b|\()/i.test(line));
+}
+
+function clearCodexTurnCompleted(blockId: string): void {
+    if (!codexTurnCompleted.delete(blockId)) {
+        return;
+    }
+    logCodexPauseDebug(blockId, "turn-completed-cleared");
 }
 
 function scheduleCodexQuestionNotification(blockId: string): void {
+    if (!isActiveCodexTurn(blockId)) {
+        logCodexPauseDebug(blockId, "skip-schedule-inactive-turn");
+        resetCodexQuestionTracking(blockId);
+        return;
+    }
+    if (isCodexTurnSuppressed(blockId)) {
+        logCodexPauseDebug(blockId, "skip-schedule-turn-completed");
+        resetCodexQuestionTracking(blockId);
+        return;
+    }
     clearCodexQuestionPending(blockId);
-    const buffer = codexQuestionBuffers.get(blockId) ?? "";
-    const pauseMs = looksLikeCodexApprovalPromptCandidate(buffer) ? CodexApprovalPauseMs : CodexQuestionPauseMs;
-    const timerId = window.setTimeout(() => {
+    logCodexPauseDebug(blockId, "timer-scheduled", {
+        pauseMs: CodexPauseNotificationMs,
+        activeNotification: codexQuestionActive.has(blockId),
+        lastHeartbeatTs: codexHeartbeatLastSeenTs.get(blockId) ?? null,
+    });
+    const timerId = globalThis.setTimeout(() => {
         codexQuestionPendingTimers.delete(blockId);
-        const latestBuffer = codexQuestionBuffers.get(blockId) ?? "";
-        const prompt = detectCodexQuestionPrompt(latestBuffer);
-        if (!prompt) {
+        const activeTurn = isActiveCodexTurn(blockId);
+        const lastHeartbeatTs = codexHeartbeatLastSeenTs.get(blockId) ?? 0;
+        const elapsedMs = Date.now() - lastHeartbeatTs;
+        logCodexPauseDebug(blockId, "timer-fired", {
+            activeTurn,
+            lastHeartbeatTs,
+            elapsedMs,
+        });
+        if (!activeTurn) {
+            logCodexPauseDebug(blockId, "skip-notification-inactive-turn");
             return;
         }
-        if (codexQuestionActiveSignatures.get(blockId) === prompt.signature) {
+        if (elapsedMs < CodexPauseNotificationMs) {
+            logCodexPauseDebug(blockId, "skip-notification-recent-output", {
+                elapsedMs,
+                thresholdMs: CodexPauseNotificationMs,
+            });
             return;
         }
         codexQuestionActive.add(blockId);
-        codexQuestionActiveSignatures.set(blockId, prompt.signature);
-        fireAndForget(() => RpcApi.AgentNotifyCommand(TabRpcClient, createCodexQuestionNotification(blockId, prompt)));
-    }, pauseMs);
+        logCodexPauseDebug(blockId, "notification-emitted", {
+            elapsedMs,
+            notifyId: getCodexQuestionNotifyId(blockId),
+        });
+        fireAndForget(() => RpcApi.AgentNotifyCommand(TabRpcClient, createCodexQuestionNotification(blockId)));
+    }, CodexPauseNotificationMs);
     codexQuestionPendingTimers.set(blockId, timerId);
 }
 
 export function clearCodexApprovalNotification(blockId: string): void {
-    resetCodexQuestionTracking(blockId);
-    codexQuestionActiveSignatures.delete(blockId);
     if (!codexQuestionActive.delete(blockId)) {
         return;
     }
+    logCodexPauseDebug(blockId, "notification-cleared", {
+        notifyId: getCodexQuestionNotifyId(blockId),
+    });
     fireAndForget(() => RpcApi.ClearAgentNotificationCommand(TabRpcClient, getCodexQuestionNotifyId(blockId)));
 }
 
+export function markCodexTurnCompleted(blockId: string): void {
+    codexTurnCompleted.add(blockId);
+    logCodexPauseDebug(blockId, "turn-completed-marked");
+    clearCodexApprovalNotification(blockId);
+    resetCodexQuestionTracking(blockId);
+}
+
 export function observeTerminalOutputForCodexApproval(blockId: string, rawData: string): void {
-    const runningCommand = runningShellCommands.get(blockId);
-    if (!runningCommand || !isCodexCommand(runningCommand.command ?? "")) {
-        resetCodexQuestionTracking(blockId);
+    const debugInfo = getCodexPauseDebugInfo(rawData);
+    const heartbeatMatch = matchesCodexWorkingHeartbeat(debugInfo.sanitized);
+    const strongTurnStartMatch = matchesStrongCodexTurnStart(debugInfo.sanitized);
+    const activeTurn = isActiveCodexTurn(blockId);
+    logCodexPauseDebug(blockId, "output-observed", {
+        activeTurn,
+        rawLength: debugInfo.rawLength,
+        classification: debugInfo.classification,
+        preview: debugInfo.preview,
+        heartbeatMatch,
+        strongTurnStartMatch,
+    });
+    if (isCodexTurnSuppressed(blockId)) {
+        if (strongTurnStartMatch) {
+            logCodexPauseDebug(blockId, "turn-completed-cleared-from-output", {
+                preview: debugInfo.preview,
+            });
+            clearCodexTurnCompleted(blockId);
+        } else {
+        logCodexPauseDebug(blockId, "ignore-output-turn-completed", {
+            classification: debugInfo.classification,
+            preview: debugInfo.preview,
+        });
+        return;
+        }
+    }
+    if (debugInfo.classification === "empty-after-sanitize") {
+        logCodexPauseDebug(blockId, "ignore-empty-after-sanitize");
         return;
     }
-    const chunk = stripTerminalControlSequences(rawData).trim();
-    if (!chunk) {
-        return;
-    }
-    const nextBuffer = `${codexQuestionBuffers.get(blockId) ?? ""}\n${chunk}`.slice(-CodexApprovalBufferMaxLen);
-    codexQuestionBuffers.set(blockId, nextBuffer);
-    if (looksLikeCodexPromptChunk(nextBuffer)) {
-        scheduleCodexQuestionNotification(blockId);
-        return;
-    }
-    clearCodexQuestionPending(blockId);
-    if (codexQuestionActive.has(blockId) && !looksLikeCodexPromptChunk(chunk)) {
+    if (codexQuestionActive.has(blockId)) {
+        logCodexPauseDebug(blockId, "output-resumed-clear-notification", {
+            classification: debugInfo.classification,
+        });
         clearCodexApprovalNotification(blockId);
     }
+    if (!heartbeatMatch) {
+        logCodexPauseDebug(blockId, "ignore-non-heartbeat-output", {
+            classification: debugInfo.classification,
+            preview: debugInfo.preview,
+        });
+        return;
+    }
+    const lastHeartbeatTs = Date.now();
+    codexHeartbeatLastSeenTs.set(blockId, lastHeartbeatTs);
+    logCodexPauseDebug(blockId, "heartbeat-updated", {
+        lastHeartbeatTs,
+        classification: debugInfo.classification,
+    });
+    scheduleCodexQuestionNotification(blockId);
 }
 
 export function setRunningShellCommand(blockId: string, command: string | null, startTs = Date.now()): void {
     if (!command) {
         runningShellCommands.delete(blockId);
         return;
+    }
+    if (isCodexCommand(command)) {
+        clearCodexTurnCompleted(blockId);
     }
     runningShellCommands.set(blockId, { command, startTs });
 }

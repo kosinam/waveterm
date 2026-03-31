@@ -3,6 +3,7 @@
 
 import { BlockModel } from "@/app/block/block-model";
 import { atoms } from "@/app/store/global-atoms";
+import { markCodexTurnCompleted } from "@/app/view/term/osc-handlers";
 import { RpcApi } from "@/app/store/wshclientapi";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
 import { getLayoutModelForStaticTab } from "@/layout/index";
@@ -54,6 +55,23 @@ function isCodexQuestionNotification(notification: AgentNotification | null | un
         return false;
     }
     return notification.agent === "codex" && notification.status === "question" && notification.notifyid.startsWith("codex-question:");
+}
+
+export function shouldDisarmCodexPauseForNotification(notification: AgentNotification | null | undefined): boolean {
+    if (notification == null) {
+        return false;
+    }
+    if (notification.agent !== "codex") {
+        return false;
+    }
+    if (!notification.oref?.startsWith("block:")) {
+        return false;
+    }
+    const lifecycle = notification.lifecycle ?? "terminal";
+    if (lifecycle !== "terminal") {
+        return false;
+    }
+    return notification.status === "completion" || notification.status === "error";
 }
 
 export function shouldResetReadState(existing: AgentNotification | null | undefined, incoming: AgentNotification): boolean {
@@ -149,6 +167,14 @@ function isMeaningfulTypingKey(event: KeyboardEvent): boolean {
 function markUnreadNotificationsReadForBlock(target: EventTarget | null): void {
     const targetBlockId = getEventBlockId(target);
     if (!targetBlockId) return;
+    markUnreadNotificationsReadForBlockId(targetBlockId);
+}
+
+export function markUnreadNotificationsReadForBlockId(
+    targetBlockId: string,
+    opts?: { ignoreGracePeriod?: boolean }
+): void {
+    if (!targetBlockId) return;
     const now = Date.now();
     const notifications = globalStore.get(agentNotificationsAtom);
     const readIds = globalStore.get(agentReadIdsAtom);
@@ -157,7 +183,7 @@ function markUnreadNotificationsReadForBlock(target: EventTarget | null): void {
         const notificationBlockId = notification.oref?.split(":")[1];
         if (notificationBlockId !== targetBlockId) continue;
         const arrivedAt = notificationArrivalMs.get(notification.notifyid) ?? 0;
-        if (now - arrivedAt < notificationKeystrokeGraceMs) continue;
+        if (!opts?.ignoreGracePeriod && now - arrivedAt < notificationKeystrokeGraceMs) continue;
         markAgentNotificationRead(notification.notifyid);
     }
 }
@@ -185,7 +211,12 @@ function flashBlockIfVisible(notification: AgentNotification): void {
 }
 
 function getAgentReadPruneAgeMs(): number {
-    const configuredValue = globalStore.get(atoms.settingsAtom)?.[agentReadPruneAgeKey];
+    let configuredValue: unknown;
+    try {
+        configuredValue = globalStore.get(atoms.settingsAtom)?.[agentReadPruneAgeKey];
+    } catch {
+        return defaultAgentReadPruneAgeMs;
+    }
     if (typeof configuredValue !== "number" || !Number.isFinite(configuredValue)) {
         return defaultAgentReadPruneAgeMs;
     }
@@ -287,6 +318,12 @@ export function setupAgentNotifySubscription(): void {
             if (data.notification == null) return;
 
             const incoming = data.notification;
+            if (shouldDisarmCodexPauseForNotification(incoming)) {
+                const blockId = incoming.oref.split(":")[1];
+                if (blockId) {
+                    markCodexTurnCompleted(blockId);
+                }
+            }
             notificationArrivalMs.set(incoming.notifyid, Date.now());
             const existing = globalStore.get(agentNotificationsAtom).find((n) => n.notifyid === incoming.notifyid);
             if (shouldResetReadState(existing, incoming)) {
