@@ -17,6 +17,8 @@ interface SuggestionControlProps {
     fetchSuggestions: SuggestionsFnType;
     className?: string;
     placeholderText?: string;
+    initialQuery?: string;
+    selectInputOnMount?: boolean;
     children?: React.ReactNode;
 }
 
@@ -33,12 +35,16 @@ function SuggestionControl({
     onTab,
     fetchSuggestions,
     className,
+    initialQuery,
+    selectInputOnMount,
     children,
 }: SuggestionControlProps) {
     if (!isOpen || !anchorRef.current || !fetchSuggestions) return null;
 
     return (
-        <SuggestionControlInner {...{ anchorRef, onClose, onSelect, onTab, fetchSuggestions, className, children }} />
+        <SuggestionControlInner
+            {...{ anchorRef, onClose, onSelect, onTab, fetchSuggestions, className, children, initialQuery, selectInputOnMount }}
+        />
     );
 }
 
@@ -175,10 +181,12 @@ function SuggestionControlInner({
     fetchSuggestions,
     className,
     placeholderText,
+    initialQuery,
+    selectInputOnMount,
     children,
 }: SuggestionControlInnerProps) {
     const widgetId = useId();
-    const [query, setQuery] = useState("");
+    const [query, setQuery] = useState(initialQuery ?? "");
     const reqNumRef = useRef(0);
     let [suggestions, setSuggestions] = useState<SuggestionType[]>([]);
     const [selectedIndex, setSelectedIndex] = useState(0);
@@ -221,6 +229,9 @@ function SuggestionControlInner({
 
     useEffect(() => {
         inputRef.current?.focus();
+        if (selectInputOnMount) {
+            inputRef.current?.select();
+        }
     }, []);
 
     useEffect(() => {
@@ -345,4 +356,11 @@ function SuggestionControlInner({
     );
 }
 
-export { BlockHeaderSuggestionControl, SuggestionControl, SuggestionControlNoData, SuggestionControlNoResults };
+export {
+    BlockHeaderSuggestionControl,
+    SuggestionContent,
+    SuggestionControl,
+    SuggestionControlNoData,
+    SuggestionControlNoResults,
+    SuggestionIcon,
+};

@@ -5,24 +5,23 @@ import { BlockNodeModel } from "@/app/block/blocktypes";
 import { Search, useSearch } from "@/app/element/search";
 import { globalStore } from "@/app/store/jotaiStore";
 import { getSimpleControlShiftAtom } from "@/app/store/keymodel";
+import { recordRecentUrlVisit } from "@/app/store/recent-urls";
 import type { TabModel } from "@/app/store/tab-model";
 import { makeORef } from "@/app/store/wos";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
-import {
-    BlockHeaderSuggestionControl,
-    SuggestionControlNoData,
-    SuggestionControlNoResults,
-} from "@/app/suggestion/suggestion";
+import { SuggestionContent, SuggestionIcon } from "@/app/suggestion/suggestion";
 import { MockBoundary } from "@/app/waveenv/mockboundary";
 import { useWaveEnv } from "@/app/waveenv/waveenv";
 import { openLink } from "@/store/global";
 import { adaptFromReactOrNativeKeyEvent, checkKeyPressed } from "@/util/keyutil";
 import { fireAndForget, useAtomValueSafe } from "@/util/util";
 import clsx from "clsx";
+import { offset, useFloating } from "@floating-ui/react";
 import { WebviewTag } from "electron";
 import { Atom, PrimitiveAtom, atom, useAtomValue, useSetAtom } from "jotai";
 import { Fragment, createRef, memo, useCallback, useEffect, useRef, useState } from "react";
 import "./webview.scss";
+import { getMergedUrlSuggestions } from "./webview-url-suggestions";
 import type { WebViewEnv } from "./webviewenv";
 
 // User agent strings for mobile emulation
@@ -70,7 +69,9 @@ export class WebViewModel implements ViewModel {
     domReady: PrimitiveAtom<boolean>;
     hideNav: Atom<boolean>;
     searchAtoms?: SearchAtoms;
-    typeaheadOpen: PrimitiveAtom<boolean>;
+    inlineSuggestionsOpen: PrimitiveAtom<boolean>;
+    inlineSuggestions: PrimitiveAtom<SuggestionType[]>;
+    inlineSuggestionIndex: PrimitiveAtom<number>;
     partitionOverride: PrimitiveAtom<string> | null;
     userAgentType: Atom<string>;
     env: WebViewEnv;
@@ -102,7 +103,9 @@ export class WebViewModel implements ViewModel {
         this.webviewRef = createRef<WebviewTag>();
         this.domReady = atom(false);
         this.hideNav = this.env.getBlockMetaKeyAtom(blockId, "web:hidenav");
-        this.typeaheadOpen = atom(false);
+        this.inlineSuggestionsOpen = atom(false);
+        this.inlineSuggestions = atom([] as SuggestionType[]);
+        this.inlineSuggestionIndex = atom(-1);
         this.partitionOverride = null;
         this.userAgentType = this.env.getBlockMetaKeyAtom(blockId, "web:useragenttype");
 
@@ -281,8 +284,17 @@ export class WebViewModel implements ViewModel {
         }
     }
 
-    setTypeaheadOpen(open: boolean) {
-        globalStore.set(this.typeaheadOpen, open);
+    setInlineSuggestionsOpen(open: boolean) {
+        globalStore.set(this.inlineSuggestionsOpen, open);
+    }
+
+    closeInlineSuggestions() {
+        globalStore.set(this.inlineSuggestionsOpen, false);
+        globalStore.set(this.inlineSuggestionIndex, -1);
+    }
+
+    openInlineSuggestions() {
+        globalStore.set(this.inlineSuggestionsOpen, true);
     }
 
     async fetchBookmarkSuggestions(
@@ -295,7 +307,10 @@ export class WebViewModel implements ViewModel {
             widgetid: reqContext.widgetid,
             reqnum: reqContext.reqnum,
         });
-        return result;
+        return {
+            ...result,
+            suggestions: getMergedUrlSuggestions(query, result?.suggestions ?? []),
+        };
     }
 
     handleUrlWrapperMouseOver(e: React.MouseEvent<HTMLDivElement, MouseEvent>) {
@@ -346,17 +361,68 @@ export class WebViewModel implements ViewModel {
 
     handleUrlChange(event: React.ChangeEvent<HTMLInputElement>) {
         globalStore.set(this.url, event.target.value);
+        this.openInlineSuggestions();
+        globalStore.set(this.inlineSuggestionIndex, -1);
     }
 
     handleKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
         const waveEvent = adaptFromReactOrNativeKeyEvent(event);
+        const inlineSuggestionsOpen = globalStore.get(this.inlineSuggestionsOpen);
+        const inlineSuggestions = globalStore.get(this.inlineSuggestions);
+        const selectedIndex = globalStore.get(this.inlineSuggestionIndex);
+
+        if (checkKeyPressed(waveEvent, "ArrowDown")) {
+            if (!inlineSuggestionsOpen) {
+                this.openInlineSuggestions();
+                globalStore.set(this.inlineSuggestionIndex, inlineSuggestions.length > 0 ? 0 : -1);
+                return;
+            }
+            if (inlineSuggestions.length > 0) {
+                const nextIndex = selectedIndex < 0 ? 0 : Math.min(selectedIndex + 1, inlineSuggestions.length - 1);
+                globalStore.set(this.inlineSuggestionIndex, nextIndex);
+            }
+            return;
+        }
+        if (checkKeyPressed(waveEvent, "ArrowUp")) {
+            if (!inlineSuggestionsOpen) {
+                this.openInlineSuggestions();
+                globalStore.set(this.inlineSuggestionIndex, inlineSuggestions.length > 0 ? inlineSuggestions.length - 1 : -1);
+                return;
+            }
+            if (inlineSuggestions.length > 0) {
+                const nextIndex = selectedIndex <= 0 ? -1 : selectedIndex - 1;
+                globalStore.set(this.inlineSuggestionIndex, nextIndex);
+            }
+            return;
+        }
+        if (checkKeyPressed(waveEvent, "Tab")) {
+            if (inlineSuggestionsOpen && selectedIndex >= 0 && selectedIndex < inlineSuggestions.length) {
+                const suggestion = inlineSuggestions[selectedIndex];
+                if (suggestion?.type === "url" && suggestion["url:url"]) {
+                    event.preventDefault();
+                    globalStore.set(this.url, suggestion["url:url"]);
+                }
+                return;
+            }
+        }
         if (checkKeyPressed(waveEvent, "Enter")) {
-            const url = globalStore.get(this.url);
+            let url = globalStore.get(this.url);
+            if (inlineSuggestionsOpen && selectedIndex >= 0 && selectedIndex < inlineSuggestions.length) {
+                const suggestion = inlineSuggestions[selectedIndex];
+                if (suggestion?.type === "url" && suggestion["url:url"]) {
+                    url = suggestion["url:url"];
+                }
+            }
+            this.closeInlineSuggestions();
             this.loadUrl(url, "enter");
             this.urlInputRef.current?.blur();
             return;
         }
         if (checkKeyPressed(waveEvent, "Escape")) {
+            if (inlineSuggestionsOpen) {
+                this.closeInlineSuggestions();
+                return;
+            }
             this.webviewRef.current?.focus();
         }
     }
@@ -366,11 +432,18 @@ export class WebViewModel implements ViewModel {
         globalStore.set(this.urlInputFocused, true);
         this.urlInputRef.current.focus();
         event.target.select();
+        this.openInlineSuggestions();
     }
 
     handleBlur(event: React.FocusEvent<HTMLInputElement>) {
         globalStore.set(this.urlWrapperClassName, "");
         globalStore.set(this.urlInputFocused, false);
+        setTimeout(() => {
+            if (document.activeElement === this.urlInputRef.current) {
+                return;
+            }
+            this.closeInlineSuggestions();
+        }, 100);
     }
 
     /**
@@ -384,6 +457,7 @@ export class WebViewModel implements ViewModel {
                 meta: { url },
             })
         );
+        recordRecentUrlVisit(url);
         globalStore.set(this.url, url);
         if (this.searchAtoms) {
             globalStore.set(this.searchAtoms.isOpen, false);
@@ -587,8 +661,9 @@ export class WebViewModel implements ViewModel {
             return true;
         }
         if (checkKeyPressed(e, "Cmd:o")) {
-            const curVal = globalStore.get(this.typeaheadOpen);
-            globalStore.set(this.typeaheadOpen, !curVal);
+            this.urlInputRef?.current?.focus();
+            this.urlInputRef?.current?.select();
+            this.openInlineSuggestions();
             return true;
         }
         return false;
@@ -757,67 +832,82 @@ export class WebViewModel implements ViewModel {
     }
 }
 
-const BookmarkTypeahead = memo(
-    ({ model, blockRef }: { model: WebViewModel; blockRef: React.RefObject<HTMLDivElement> }) => {
-        const env = useWaveEnv<WebViewEnv>();
-        const openBookmarksJson = () => {
-            fireAndForget(async () => {
-                const path = `${env.electron.getConfigDir()}/presets/bookmarks.json`;
-                const blockDef: BlockDef = {
-                    meta: {
-                        view: "preview",
-                        file: path,
-                    },
-                };
-                await env.createBlock(blockDef, false, true);
-                model.setTypeaheadOpen(false);
-            });
-        };
-        return (
-            <BlockHeaderSuggestionControl
-                blockRef={blockRef}
-                openAtom={model.typeaheadOpen}
-                onClose={() => model.setTypeaheadOpen(false)}
-                onSelect={(suggestion) => {
-                    if (suggestion == null || suggestion.type != "url") {
-                        return true;
-                    }
-                    model.loadUrl(suggestion["url:url"], "bookmark-typeahead");
-                    return true;
-                }}
-                fetchSuggestions={model.fetchBookmarkSuggestions}
-                placeholderText="Open Bookmark..."
-            >
-                <SuggestionControlNoData>
-                    <div className="text-center">
-                        <p className="text-lg font-bold text-gray-100">No Bookmarks Configured</p>
-                        <p className="text-sm text-gray-400 mt-1">
-                            Edit your <code className="font-mono">bookmarks.json</code> file to configure bookmarks.
-                        </p>
-                        <button
-                            onClick={openBookmarksJson}
-                            className="mt-3 px-4 py-2 text-sm font-medium text-black bg-accent hover:bg-accenthover rounded-lg cursor-pointer"
-                        >
-                            Open bookmarks.json
-                        </button>
-                    </div>
-                </SuggestionControlNoData>
+const InlineUrlSuggestions = memo(({ model }: { model: WebViewModel }) => {
+    const open = useAtomValue(model.inlineSuggestionsOpen);
+    const query = useAtomValue(model.url);
+    const suggestions = useAtomValue(model.inlineSuggestions);
+    const selectedIndex = useAtomValue(model.inlineSuggestionIndex);
+    const { refs, floatingStyles } = useFloating({
+        placement: "bottom-start",
+        strategy: "absolute",
+        middleware: [offset(4)],
+    });
+    const reqNumRef = useRef(0);
 
-                <SuggestionControlNoResults>
-                    <div className="text-center">
-                        <p className="text-sm text-gray-400">No matching bookmarks</p>
-                        <button
-                            onClick={openBookmarksJson}
-                            className="mt-3 px-4 py-2 text-sm font-medium text-black bg-accent hover:bg-accenthover rounded-lg cursor-pointer"
-                        >
-                            Edit bookmarks.json
-                        </button>
-                    </div>
-                </SuggestionControlNoResults>
-            </BlockHeaderSuggestionControl>
-        );
+    useEffect(() => {
+        refs.setReference(model.urlInputRef.current);
+    }, [model.urlInputRef.current]);
+
+    useEffect(() => {
+        if (!open || !model.urlInputRef.current) {
+            globalStore.set(model.inlineSuggestions, []);
+            globalStore.set(model.inlineSuggestionIndex, -1);
+            return;
+        }
+        reqNumRef.current++;
+        const reqnum = reqNumRef.current;
+        model.fetchBookmarkSuggestions(query ?? "", { widgetid: `web-inline-${model.blockId}`, reqnum }).then((results) => {
+            if (reqNumRef.current !== reqnum) {
+                return;
+            }
+            globalStore.set(model.inlineSuggestions, results?.suggestions ?? []);
+            globalStore.set(model.inlineSuggestionIndex, -1);
+        });
+    }, [open, query]);
+
+    if (!open || !model.urlInputRef.current) {
+        return null;
     }
-);
+
+    return (
+        <div
+            ref={refs.setFloating}
+            style={floatingStyles}
+            className="w-96 rounded-lg bg-modalbg shadow-lg border border-gray-700 z-[var(--zindex-typeahead-modal)] absolute overflow-hidden"
+            onMouseDown={(e) => e.preventDefault()}
+        >
+            {suggestions.length > 0 ? (
+                <div className="max-h-96 overflow-y-auto divide-y divide-gray-700">
+                    {suggestions.map((suggestion, index) => (
+                        <div
+                            key={suggestion.suggestionid}
+                            className={clsx(
+                                "flex items-center gap-3 px-4 py-2 cursor-pointer text-gray-100",
+                                index === selectedIndex ? "bg-accentbg" : "hover:bg-hoverbg"
+                            )}
+                            onMouseEnter={() => globalStore.set(model.inlineSuggestionIndex, index)}
+                            onClick={() => {
+                                if (suggestion.type === "url" && suggestion["url:url"]) {
+                                    globalStore.set(model.url, suggestion["url:url"]);
+                                    model.closeInlineSuggestions();
+                                    model.loadUrl(suggestion["url:url"], "inline-typeahead");
+                                    model.urlInputRef.current?.blur();
+                                }
+                            }}
+                        >
+                            <SuggestionIcon suggestion={suggestion} />
+                            <SuggestionContent suggestion={suggestion} />
+                        </div>
+                    ))}
+                </div>
+            ) : (
+                <div className="flex items-center justify-center min-h-[72px] p-4 text-sm text-gray-400">
+                    {query?.trim() ? "No matching recent URLs or bookmarks" : "No recent URLs or bookmarks"}
+                </div>
+            )}
+        </div>
+    );
+});
 
 interface WebViewProps {
     blockId: string;
@@ -1125,7 +1215,7 @@ const WebView = memo(({ model, onFailLoad, blockRef, initialSrc }: WebViewProps)
                 </div>
             )}
             <Search {...searchProps} />
-            <BookmarkTypeahead model={model} blockRef={blockRef} />
+            <InlineUrlSuggestions model={model} />
         </Fragment>
     );
 });

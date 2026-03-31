@@ -56,4 +56,22 @@ describe("webview preview fallback", () => {
         expect(globalStore.get(env.getSettingsKeyAtom("web:defaulturl"))).toBe("https://global.example");
         expect(globalStore.get(env.wos.getWaveObjectAtom<Block>(`block:${blockId}`))?.meta?.pinnedurl).toBeUndefined();
     });
+
+    it("opens inline url suggestions", () => {
+        const blockId = "webview-inline-suggestions-block";
+        const env = makeMockWaveEnv();
+        const model = new WebViewModel({
+            blockId,
+            nodeModel: {
+                isFocused: atom(true),
+                focusNode: () => {},
+            } as any,
+            tabModel: {} as any,
+            waveEnv: env,
+        });
+
+        model.openInlineSuggestions();
+
+        expect(globalStore.get(model.inlineSuggestionsOpen)).toBe(true);
+    });
 });
