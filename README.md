@@ -2,56 +2,10 @@
 
 > **Original WaveTerm README:** [README.upstream.md](README.upstream.md)
 
-This is a fork of the amazing [WaveTerm](https://github.com/wavetermdev/waveterm) that adds cmux-style agent notifications and tmux keybindings, combining best of both worlds on Mac, Linux, and Windows (untested). Please note this is a purely vibe-coded prototype not ready for any PRs for upstream - I am not a front-end developer, just playing around with custom tools at this point.
+This is a fork of the amazing [WaveTerm](https://github.com/wavetermdev/waveterm) that adds [cmux](https://www.cmux.dev/)-style agent notifications and tmux keybindings, combining best of both worlds on Mac, Linux, and Windows (untested). Please note this is a heavily iterated vibe-coded prototype not ready for any upstream PRs. 
 
 ![WaveMux screenshot](assets/wavemux-screenshot.png)
 
----
-
-## tmux-style Ctrl-w Chord Keybindings
-
-A configurable prefix chord is layered on top of WaveTerm's existing keybindings. The default prefix is **`Ctrl-w`** — chosen to avoid conflict with nested tmux sessions, which use `Ctrl-B` by default (WaveTerm would otherwise intercept `Ctrl-B` before tmux sees it).
-
-To change the prefix, set `app:chordprefix` in your WaveTerm `settings.json` and restart. For example, to use the tmux default:
-
-```json
-{ "app:chordprefix": "Ctrl:b" }
-```
-
-After pressing the prefix key, a short window accepts the following keys:
-
-| Key | Action |
-|-----|--------|
-| `%` / `"` | Split pane right / below |
-| `c` | New tab (tmux window equivalent) |
-| `n` / `p` | Next / previous tab |
-| `1`–`9` | Switch workspace by number |
-| `(` / `)` | Previous / next workspace |
-| `←→↑↓` | Navigate panes |
-| `z` | Zoom / magnify pane |
-| `x` | Close pane |
-| `b` / `B` | New browser pane right / below |
-| `f` / `F` | New file browser pane right / below |
-| `w` | Toggle widget panel |
-| `a` | Toggle Wave AI panel |
-| `I` | Toggle Agent notification panel |
-| `U` | Jump to latest unread agent notification |
-| `;` | Return to the previously focused pane or Wave AI, across tabs/workspaces |
-| `N` / `$` / `X` | New / rename / delete workspace |
-| `s` | Open workspace picker |
-| `{` / `}` | Swap panes left / right |
-| `?` | Open URL prompt in focused browser pane |
-| `:` | Enter `wsh` command |
-
-A **BottomBar** input component appears for prompted commands (`:`, `?`). A **WorkspacePickerModal** (`s`) lists all workspaces for fast switching.
-
-This makes `Ctrl-w U` followed by `Ctrl-w ;` a quick round-trip for checking an unread notification and then returning to where you were.
-
-The focused block border and resize handles now use a dedicated `--block-border-color` CSS variable (previously shared with `accent-color`), keeping the focus indicator visually distinct.
-
-
-
----
 
 ## Cmux-like agent Notification Panel
 
@@ -250,6 +204,55 @@ What each hook does:
 - `Stop` — sends the terminal notification for the Codex turn, including question prompts when the final message presents explicit options.
 - `PostToolUse` (Bash matcher) — records high-confidence Bash failures as intermediate state so they only surface if the turn ultimately stops in error.
 - `UserPromptSubmit` — clears the active notification when you respond, so stale `question` / `error` states do not persist.
+
+⚠️ Note: mid-turn input detection for Codex is best-effort and can be flaky. Codex does not currently provide a dedicated structured "waiting for input" signal for this terminal flow, so the question/approval notification path is inferred from streamed terminal output. Partial redraws or prompt formatting changes can therefore cause missed or imperfect detections.
+
+---
+
+---
+
+## tmux-style Ctrl-w Chord Keybindings
+
+A configurable prefix chord is layered on top of WaveTerm's existing keybindings. The default prefix is **`Ctrl-w`** — chosen to avoid conflict with nested tmux sessions, which use `Ctrl-B` by default (WaveTerm would otherwise intercept `Ctrl-B` before tmux sees it).
+
+To change the prefix, set `app:chordprefix` in your WaveTerm `settings.json` and restart. For example, to use the tmux default:
+
+```json
+{ "app:chordprefix": "Ctrl:b" }
+```
+
+After pressing the prefix key, a short window accepts the following keys:
+
+| Key | Action |
+|-----|--------|
+| `%` / `"` | Split pane right / below |
+| `c` | New tab (tmux window equivalent) |
+| `n` / `p` | Next / previous tab |
+| `1`–`9` | Switch workspace by number |
+| `(` / `)` | Previous / next workspace |
+| `←→↑↓` | Navigate panes |
+| `z` | Zoom / magnify pane |
+| `x` | Close pane |
+| `b` / `B` | New browser pane right / below |
+| `f` / `F` | New file browser pane right / below |
+| `w` | Toggle widget panel |
+| `a` | Toggle Wave AI panel |
+| `I` | Toggle Agent notification panel |
+| `U` | Jump to latest unread agent notification |
+| `;` | Return to the previously focused pane or Wave AI, across tabs/workspaces |
+| `N` / `$` / `X` | New / rename / delete workspace |
+| `s` | Open workspace picker |
+| `{` / `}` | Swap panes left / right |
+| `?` | Open URL prompt in focused browser pane |
+| `:` | Enter `wsh` command |
+
+A **BottomBar** input component appears for prompted commands (`:`, `?`). A **WorkspacePickerModal** (`s`) lists all workspaces for fast switching.
+
+This makes `Ctrl-w U` followed by `Ctrl-w ;` a quick round-trip for checking an unread notification and then returning to where you were.
+
+The focused block border and resize handles now use a dedicated `--block-border-color` CSS variable (previously shared with `accent-color`), keeping the focus indicator visually distinct.
+
+
 
 ---
 
