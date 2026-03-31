@@ -70,4 +70,24 @@ $ curl -I https://example.com
             "\u001b[33mWould you like to run the following command?\u001b[0m\r\n\r\n$ git commit -m \"x\"\r\n\r\n1. Yes, proceed (y)\r\n2. Yes, and don't ask again for commands that start with git commit (p)\r\n3. No, and tell Codex what to do differently (esc)";
         expect(detectCodexToolApprovalPrompt(prompt)).toEqual({ command: 'git commit -m "x"' });
     });
+
+    it("matches approvals without the persistent allow option", () => {
+        const prompt = `Would you like to run the following command?
+
+$ npm test
+
+1. Yes, proceed (y)
+2. No, and tell Codex what to do differently (esc)`;
+        expect(detectCodexToolApprovalPrompt(prompt)).toEqual({ command: "npm test" });
+    });
+
+    it("ignores prompts without a deny option", () => {
+        const prompt = `Would you like to run the following command?
+
+$ npm test
+
+1. Yes, proceed (y)
+2. Show diff`;
+        expect(detectCodexToolApprovalPrompt(prompt)).toBeNull();
+    });
 });

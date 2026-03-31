@@ -49,6 +49,13 @@ function hasSameActionableContent(a: AgentNotification, b: AgentNotification): b
     );
 }
 
+function isCodexApprovalNotification(notification: AgentNotification | null | undefined): boolean {
+    if (notification == null) {
+        return false;
+    }
+    return notification.agent === "codex" && notification.status === "question" && notification.notifyid.startsWith("codex-approval:");
+}
+
 export function shouldResetReadState(existing: AgentNotification | null | undefined, incoming: AgentNotification): boolean {
     if (existing == null) {
         return true;
@@ -57,7 +64,7 @@ export function shouldResetReadState(existing: AgentNotification | null | undefi
         return false;
     }
     if (hasSameActionableContent(existing, incoming)) {
-        return false;
+        return isCodexApprovalNotification(incoming) && incoming.timestamp > existing.timestamp;
     }
     return true;
 }

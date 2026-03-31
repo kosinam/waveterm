@@ -23,9 +23,15 @@ describe("agentnotify read reset policy", () => {
     });
 
     it("keeps a read question read on timestamp-only refresh", () => {
-        const existing = makeNotification({ timestamp: 100 });
-        const incoming = makeNotification({ timestamp: 200 });
+        const existing = makeNotification({ agent: "claude", notifyid: "n1", timestamp: 100 });
+        const incoming = makeNotification({ agent: "claude", notifyid: "n1", timestamp: 200 });
         expect(shouldResetReadState(existing, incoming)).toBe(false);
+    });
+
+    it("re-alerts repeated Codex approval prompts for the same block", () => {
+        const existing = makeNotification({ notifyid: "codex-approval:b1", timestamp: 100 });
+        const incoming = makeNotification({ notifyid: "codex-approval:b1", timestamp: 200 });
+        expect(shouldResetReadState(existing, incoming)).toBe(true);
     });
 
     it("marks a read question unread when it resolves to completion", () => {

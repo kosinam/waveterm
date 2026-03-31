@@ -152,10 +152,12 @@ export function detectCodexToolApprovalPrompt(data: string): CodexApprovalPrompt
     if (!/1\.\s+Yes,\s*proceed/i.test(normalized)) {
         return null;
     }
-    if (!/No,\s+and tell Codex what to do differently/i.test(normalized)) {
+    if (!/\b(?:2|3)\.\s+No,\s+and tell Codex what to do differently/i.test(normalized)) {
         return null;
     }
-    if (!/don't ask again/i.test(normalized) && !/2\.\s+/i.test(normalized)) {
+    const hasSecondaryOption = /\b2\.\s+/i.test(normalized);
+    const hasPersistentAllowOption = /don't ask again/i.test(normalized);
+    if (!hasSecondaryOption && !hasPersistentAllowOption) {
         return null;
     }
     const commandMatch = normalized.match(/^\$\s+(.+)$/m);
