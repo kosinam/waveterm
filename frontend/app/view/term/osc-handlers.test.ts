@@ -14,6 +14,7 @@ vi.mock("@/app/store/wshclientapi", () => ({
 
 import {
     clearCodexApprovalNotification,
+    createShellCompletionNotification,
     extractCodexApprovalContext,
     isClaudeCodeCommand,
     isCodexCommand,
@@ -26,6 +27,20 @@ import {
 async function flushMicrotasks(): Promise<void> {
     await Promise.resolve();
 }
+
+describe("createShellCompletionNotification", () => {
+    it("marks non-zero exits as errors", () => {
+        const notification = createShellCompletionNotification("b1", "curl example.com", 120_000, 6);
+        expect(notification.status).toBe("error");
+        expect(notification.message).toContain("failed with exit code 6");
+    });
+
+    it("treats unknown exit codes as errors", () => {
+        const notification = createShellCompletionNotification("b1", "curl example.com", 120_000);
+        expect(notification.status).toBe("error");
+        expect(notification.message).toContain("exit code unknown");
+    });
+});
 
 describe("isClaudeCodeCommand", () => {
     it("matches direct Claude Code invocations", () => {
@@ -140,6 +155,7 @@ $ curl example.com`)
 });
 
 describe("Codex pause detection", () => {
+    const codexHeartbeatLine = "•Working(0s • esc to interrupt)\r\n";
     beforeEach(() => {
         vi.useFakeTimers();
         vi.setSystemTime(new Date("2026-03-31T12:00:00Z"));
@@ -164,7 +180,7 @@ describe("Codex pause detection", () => {
     });
 
     it("raises a question notification after 5s of Codex output silence", async () => {
-        observeTerminalOutputForCodexApproval("b1", "Working...\r\n");
+        observeTerminalOutputForCodexApproval("b1", codexHeartbeatLine);
 
         vi.advanceTimersByTime(4999);
         await flushMicrotasks();
@@ -182,7 +198,7 @@ describe("Codex pause detection", () => {
     });
 
     it("uses approval context in the pause notification message when available", async () => {
-        observeTerminalOutputForCodexApproval("b1", "Working...\r\n");
+        observeTerminalOutputForCodexApproval("b1", codexHeartbeatLine);
         observeTerminalOutputForCodexApproval(
             "b1",
             `Would you like to run the following command?
@@ -205,7 +221,7 @@ $ curl example.com
     });
 
     it("refreshes an active pause notification when approval context arrives later", async () => {
-        observeTerminalOutputForCodexApproval("b1", "Working...\r\n");
+        observeTerminalOutputForCodexApproval("b1", codexHeartbeatLine);
 
         vi.advanceTimersByTime(5000);
         await flushMicrotasks();
@@ -241,7 +257,7 @@ $ curl example.com`
     });
 
     it("clears the notification when output resumes", async () => {
-        observeTerminalOutputForCodexApproval("b1", "Working...\r\n");
+        observeTerminalOutputForCodexApproval("b1", codexHeartbeatLine);
 
         vi.advanceTimersByTime(5000);
         await flushMicrotasks();
@@ -253,7 +269,7 @@ $ curl example.com`
     });
 
     it("clears the notification when the active turn ends", async () => {
-        observeTerminalOutputForCodexApproval("b1", "Working...\r\n");
+        observeTerminalOutputForCodexApproval("b1", codexHeartbeatLine);
 
         vi.advanceTimersByTime(5000);
         await flushMicrotasks();
@@ -266,12 +282,12 @@ $ curl example.com`
     });
 
     it("reuses the same notify id across repeated pauses in one turn", async () => {
-        observeTerminalOutputForCodexApproval("b1", "Working...\r\n");
+        observeTerminalOutputForCodexApproval("b1", codexHeartbeatLine);
 
         vi.advanceTimersByTime(5000);
         await flushMicrotasks();
 
-        observeTerminalOutputForCodexApproval("b1", "Working...\r\n");
+        observeTerminalOutputForCodexApproval("b1", codexHeartbeatLine);
         await flushMicrotasks();
 
         vi.advanceTimersByTime(5000);
@@ -283,7 +299,7 @@ $ curl example.com`
     });
 
     it("suppresses pause notifications after the turn is marked completed", async () => {
-        observeTerminalOutputForCodexApproval("b1", "Working...\r\n");
+        observeTerminalOutputForCodexApproval("b1", codexHeartbeatLine);
         markCodexTurnCompleted("b1");
 
         vi.advanceTimersByTime(5000);
@@ -293,7 +309,7 @@ $ curl example.com`
     });
 
     it("clears an active pause notification when the turn is marked completed", async () => {
-        observeTerminalOutputForCodexApproval("b1", "Working...\r\n");
+        observeTerminalOutputForCodexApproval("b1", codexHeartbeatLine);
 
         vi.advanceTimersByTime(5000);
         await flushMicrotasks();
@@ -314,7 +330,7 @@ $ curl example.com`
         expect(agentNotifyCommand).not.toHaveBeenCalled();
 
         setRunningShellCommand("b1", "codex");
-        observeTerminalOutputForCodexApproval("b1", "Workin\r\n");
+        observeTerminalOutputForCodexApproval("b1", codexHeartbeatLine);
 
         vi.advanceTimersByTime(5000);
         await flushMicrotasks();
@@ -342,10 +358,10 @@ $ curl example.com`
     });
 
     it("refreshes the timer from partial Working heartbeat fragments", async () => {
-        observeTerminalOutputForCodexApproval("b1", "Worki\r\n");
+        observeTerminalOutputForCodexApproval("b1", "•Working(0s • esc to interrupt\r\n");
 
         vi.advanceTimersByTime(3000);
-        observeTerminalOutputForCodexApproval("b1", "Workin\r\n");
+        observeTerminalOutputForCodexApproval("b1", codexHeartbeatLine);
 
         vi.advanceTimersByTime(3000);
         await flushMicrotasks();
@@ -357,7 +373,7 @@ $ curl example.com`
     });
 
     it("does not arm from non-heartbeat output after a heartbeat pause notification clears", async () => {
-        observeTerminalOutputForCodexApproval("b1", "Working...\r\n");
+        observeTerminalOutputForCodexApproval("b1", codexHeartbeatLine);
 
         vi.advanceTimersByTime(5000);
         await flushMicrotasks();
@@ -373,7 +389,7 @@ $ curl example.com`
     });
 
     it("treats 'Context compacted' as turn completion and suppresses the pause notification", async () => {
-        observeTerminalOutputForCodexApproval("b1", "Working...\r\n");
+        observeTerminalOutputForCodexApproval("b1", codexHeartbeatLine);
 
         vi.advanceTimersByTime(3000);
         observeTerminalOutputForCodexApproval("b1", "• Context compacted79% left · ~/waveterm\r\n");
@@ -396,7 +412,7 @@ $ curl example.com`
     });
 
     it("clears an active pause notification when 'Context compacted' arrives", async () => {
-        observeTerminalOutputForCodexApproval("b1", "Working...\r\n");
+        observeTerminalOutputForCodexApproval("b1", codexHeartbeatLine);
 
         vi.advanceTimersByTime(5000);
         await flushMicrotasks();
@@ -417,7 +433,7 @@ $ curl example.com`
     });
 
     it("does not treat ordinary prose mentioning 'Context compacted' as a turn completion", async () => {
-        observeTerminalOutputForCodexApproval("b1", "Working...\r\n");
+        observeTerminalOutputForCodexApproval("b1", codexHeartbeatLine);
         observeTerminalOutputForCodexApproval("b1", "I saw the phrase Context compacted in a prior message.\r\n");
         await flushMicrotasks();
 

@@ -34,6 +34,7 @@ const CodexQuestionNotifyIdPrefix = "codex-question:";
 const CodexCompletionNotifyIdPrefix = "codex-completion:";
 const CodexPauseNotificationMs = 5000;
 const CodexRecentOutputBufferMaxLen = 12_000;
+const CodexHeartbeatSuffix = "esc to interrupt";
 
 type RunningShellCommand = {
     command: string | null;
@@ -287,11 +288,8 @@ function resetCodexQuestionTracking(blockId: string): void {
 }
 
 function matchesCodexWorkingHeartbeat(sanitized: string): boolean {
-    const tokens = sanitized.match(/[A-Za-z]+/g) ?? [];
-    return tokens.some((token) => {
-        const normalized = token.toLowerCase();
-        return normalized.length >= 5 && "working".startsWith(normalized);
-    });
+    const normalized = sanitized.toLowerCase();
+    return normalized.includes(CodexHeartbeatSuffix);
 }
 
 function matchesStrongCodexTurnStart(sanitized: string): boolean {
@@ -299,7 +297,7 @@ function matchesStrongCodexTurnStart(sanitized: string): boolean {
         .split("\n")
         .map((line) => line.trim())
         .filter((line) => line.length > 0);
-    return lines.some((line) => /^[•>*-]?\s*working(?:\b|\()/i.test(line));
+    return lines.some((line) => line.toLowerCase().includes(CodexHeartbeatSuffix));
 }
 
 function matchesCodexTurnCompletionText(sanitized: string): boolean {
@@ -545,10 +543,11 @@ function isIgnoredShellProcess(blockId: string, decodedCmd: string): boolean {
     return ignoredProcesses.some((processName) => processName?.trim().toLowerCase() === executable);
 }
 
-function createShellCompletionNotification(blockId: string, decodedCmd: string, runtimeMs: number, exitCode?: number): AgentNotification {
+export function createShellCompletionNotification(blockId: string, decodedCmd: string, runtimeMs: number, exitCode?: number): AgentNotification {
     const commandLabel = truncateShellCommand(decodedCmd);
     const duration = formatShellCommandDuration(runtimeMs);
-    const succeeded = exitCode == null || exitCode === 0;
+    const succeeded = exitCode === 0;
+    const exitLabel = exitCode != null ? exitCode : "unknown";
     return {
         notifyid: `shellcmd:${blockId}:${Date.now()}`,
         oref: `block:${blockId}`,
@@ -559,7 +558,7 @@ function createShellCompletionNotification(blockId: string, decodedCmd: string, 
         status: succeeded ? "completion" : "error",
         message: succeeded
             ? `${commandLabel} completed in ${duration}`
-            : `${commandLabel} failed with exit code ${exitCode} after ${duration}`,
+            : `${commandLabel} failed with exit code ${exitLabel} after ${duration}`,
         timestamp: Date.now(),
     };
 }
