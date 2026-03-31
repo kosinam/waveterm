@@ -14,8 +14,10 @@ vi.mock("@/app/store/wshclientapi", () => ({
 
 import {
     clearCodexApprovalNotification,
+    extractCodexApprovalContext,
     isClaudeCodeCommand,
     isCodexCommand,
+    looksLikeCodexApprovalPrompt,
     markCodexTurnCompleted,
     observeTerminalOutputForCodexApproval,
     setRunningShellCommand,
@@ -65,6 +67,78 @@ describe("isCodexCommand", () => {
     });
 });
 
+describe("Codex approval prompt parsing", () => {
+    it("matches Codex approval prompts", () => {
+        expect(
+            looksLikeCodexApprovalPrompt(`Would you like to run the following command?
+
+Reason: Do you want to allow me to run curl example.com?
+
+$ curl example.com
+
+1. Yes, proceed (y)
+2. Yes, and don't ask again for commands that start with curl (p)
+3. No, and tell Codex what to do differently (esc)`)
+        ).toBe(true);
+    });
+
+    it("extracts both reason and command lines", () => {
+        expect(
+            extractCodexApprovalContext(`Would you like to run the following command?
+
+Reason: Do you want to allow me to run curl example.com?
+
+$ curl example.com
+
+1. Yes, proceed (y)
+2. No, and tell Codex what to do differently (esc)`)
+        ).toEqual({
+            reasonLine: "Reason: Do you want to allow me to run curl example.com?",
+            commandLine: "$ curl example.com",
+        });
+    });
+
+    it("extracts only the command when no reason line is present", () => {
+        expect(
+            extractCodexApprovalContext(`Would you like to run the following command?
+
+$ npm test
+
+1. Yes, proceed (y)
+2. No, and tell Codex what to do differently (esc)`)
+        ).toEqual({
+            reasonLine: undefined,
+            commandLine: "$ npm test",
+        });
+    });
+
+    it("extracts command context from a partial approval prompt without the full selector", () => {
+        expect(
+            extractCodexApprovalContext(`Would you like to run the following command?
+
+$ curl example.com`)
+        ).toEqual({
+            reasonLine: undefined,
+            commandLine: "$ curl example.com",
+        });
+    });
+
+    it("extracts approval context from a reflowed single-line prompt", () => {
+        expect(
+            extractCodexApprovalContext(
+                "Would you like to run the following command? Reason: Do you want to allow me to update this repository now? $ git pull 1. Yes, proceed (y) 2. Yes, and don't ask again for commands that start with git pull (p) 3. No, and tell Codex what to do differently (esc)"
+            )
+        ).toEqual({
+            reasonLine: "Reason: Do you want to allow me to update this repository now?",
+            commandLine: "$ git pull",
+        });
+    });
+
+    it("ignores non-approval output", () => {
+        expect(extractCodexApprovalContext("Working...\r\n")).toBeNull();
+    });
+});
+
 describe("Codex pause detection", () => {
     beforeEach(() => {
         vi.useFakeTimers();
@@ -105,6 +179,57 @@ describe("Codex pause detection", () => {
             status: "question",
             message: "Codex output paused",
         });
+    });
+
+    it("uses approval context in the pause notification message when available", async () => {
+        observeTerminalOutputForCodexApproval("b1", "Working...\r\n");
+        observeTerminalOutputForCodexApproval(
+            "b1",
+            `Would you like to run the following command?
+
+Reason: Do you want to allow me to run curl example.com?
+
+$ curl example.com
+
+1. Yes, proceed (y)
+2. Yes, and don't ask again for commands that start with curl (p)
+3. No, and tell Codex what to do differently (esc)`
+        );
+
+        vi.advanceTimersByTime(5000);
+        await flushMicrotasks();
+        expect(agentNotifyCommand).toHaveBeenCalledTimes(1);
+        expect(agentNotifyCommand.mock.calls[0]?.[1]).toMatchObject({
+            message: "Reason: Do you want to allow me to run curl example.com?\n$ curl example.com",
+        });
+    });
+
+    it("refreshes an active pause notification when approval context arrives later", async () => {
+        observeTerminalOutputForCodexApproval("b1", "Working...\r\n");
+
+        vi.advanceTimersByTime(5000);
+        await flushMicrotasks();
+        expect(agentNotifyCommand).toHaveBeenCalledTimes(1);
+        expect(agentNotifyCommand.mock.calls[0]?.[1]).toMatchObject({
+            message: "Codex output paused",
+        });
+
+        observeTerminalOutputForCodexApproval(
+            "b1",
+            `Would you like to run the following command?
+
+Reason: Do you want to allow me to run curl example.com?
+
+$ curl example.com`
+        );
+        await flushMicrotasks();
+
+        expect(agentNotifyCommand).toHaveBeenCalledTimes(2);
+        expect(agentNotifyCommand.mock.calls[1]?.[1]).toMatchObject({
+            notifyid: "codex-question:b1",
+            message: "Reason: Do you want to allow me to run curl example.com?\n$ curl example.com",
+        });
+        expect(clearAgentNotificationCommand).not.toHaveBeenCalled();
     });
 
     it("does not arm for non-Codex commands", async () => {
@@ -245,5 +370,64 @@ describe("Codex pause detection", () => {
         await flushMicrotasks();
         expect(agentNotifyCommand).toHaveBeenCalledTimes(1);
         expect(clearAgentNotificationCommand).toHaveBeenCalledWith(undefined, "codex-question:b1");
+    });
+
+    it("treats 'Context compacted' as turn completion and suppresses the pause notification", async () => {
+        observeTerminalOutputForCodexApproval("b1", "Working...\r\n");
+
+        vi.advanceTimersByTime(3000);
+        observeTerminalOutputForCodexApproval("b1", "• Context compacted79% left · ~/waveterm\r\n");
+        await flushMicrotasks();
+
+        expect(agentNotifyCommand).toHaveBeenCalledTimes(1);
+        expect(agentNotifyCommand.mock.calls[0]?.[1]).toMatchObject({
+            agent: "codex",
+            status: "completion",
+            lifecycle: "terminal",
+            message: "Context compacted",
+            oref: "block:b1",
+        });
+
+        vi.advanceTimersByTime(5000);
+        await flushMicrotasks();
+
+        expect(agentNotifyCommand).toHaveBeenCalledTimes(1);
+        expect(clearAgentNotificationCommand).not.toHaveBeenCalled();
+    });
+
+    it("clears an active pause notification when 'Context compacted' arrives", async () => {
+        observeTerminalOutputForCodexApproval("b1", "Working...\r\n");
+
+        vi.advanceTimersByTime(5000);
+        await flushMicrotasks();
+        expect(agentNotifyCommand).toHaveBeenCalledTimes(1);
+
+        observeTerminalOutputForCodexApproval("b1", "• Context compacted79% left · ~/waveterm\r\n");
+        await flushMicrotasks();
+
+        expect(clearAgentNotificationCommand).toHaveBeenCalledWith(undefined, "codex-question:b1");
+        expect(agentNotifyCommand).toHaveBeenCalledTimes(2);
+        expect(agentNotifyCommand.mock.calls[1]?.[1]).toMatchObject({
+            agent: "codex",
+            status: "completion",
+            lifecycle: "terminal",
+            message: "Context compacted",
+            oref: "block:b1",
+        });
+    });
+
+    it("does not treat ordinary prose mentioning 'Context compacted' as a turn completion", async () => {
+        observeTerminalOutputForCodexApproval("b1", "Working...\r\n");
+        observeTerminalOutputForCodexApproval("b1", "I saw the phrase Context compacted in a prior message.\r\n");
+        await flushMicrotasks();
+
+        vi.advanceTimersByTime(5000);
+        await flushMicrotasks();
+
+        expect(agentNotifyCommand).toHaveBeenCalledTimes(1);
+        expect(agentNotifyCommand.mock.calls[0]?.[1]).toMatchObject({
+            notifyid: "codex-question:b1",
+            status: "question",
+        });
     });
 });

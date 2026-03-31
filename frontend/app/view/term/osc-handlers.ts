@@ -31,7 +31,9 @@ const CodexRegex = /^codex\b/;
 const OpencodeRegex = /^opencode\b/;
 const LongRunningShellNotificationThresholdMs = 10_000;
 const CodexQuestionNotifyIdPrefix = "codex-question:";
+const CodexCompletionNotifyIdPrefix = "codex-completion:";
 const CodexPauseNotificationMs = 5000;
+const CodexRecentOutputBufferMaxLen = 12_000;
 
 type RunningShellCommand = {
     command: string | null;
@@ -43,6 +45,7 @@ const codexQuestionPendingTimers = new Map<string, number>();
 const codexQuestionActive = new Set<string>();
 const codexHeartbeatLastSeenTs = new Map<string, number>();
 const codexTurnCompleted = new Set<string>();
+const codexApprovalContexts = new Map<string, CodexApprovalContext>();
 
 function getCodexPauseDebugInfo(rawData: string): {
     sanitized: string;
@@ -180,6 +183,66 @@ function isCodexTurnSuppressed(blockId: string): boolean {
     return codexTurnCompleted.has(blockId);
 }
 
+function normalizePromptLine(text: string): string {
+    return text.replace(/\s+/g, " ").trim();
+}
+
+export function looksLikeCodexApprovalPrompt(data: string): boolean {
+    const normalized = stripTerminalControlSequences(data).replace(/\u00a0/g, " ");
+    return (
+        /Would you like to run the following command\?/i.test(normalized) &&
+        /1\.\s+Yes,\s*proceed/i.test(normalized) &&
+        /\b(?:2|3)\.\s+No,\s+and tell Codex what to do differently/i.test(normalized)
+    );
+}
+
+type CodexApprovalContext = {
+    reasonLine?: string;
+    commandLine?: string;
+};
+
+export function extractCodexApprovalContext(data: string): CodexApprovalContext | null {
+    const normalized = stripTerminalControlSequences(data).replace(/\u00a0/g, " ");
+    const lines = normalized
+        .replace(/\r/g, "\n")
+        .replace(/\u00a0/g, " ")
+        .split("\n")
+        .map((line) => normalizePromptLine(line))
+        .filter((line) => line.length > 0);
+    const collapsed = normalizePromptLine(normalized);
+    const hasPromptHeader =
+        lines.some((line) => /Would you like to run the following command\?/i.test(line)) ||
+        /Would you like to run the following command\?/i.test(collapsed);
+    const reasonLine =
+        lines.find((line) => /^Reason:/i.test(line)) ??
+        collapsed.match(/(Reason:\s.*?)(?=\s+\$\s|\s+\d+\.\s+(?:Yes|No)\b|$)/i)?.[1]?.trim();
+    const commandLine =
+        lines.find((line) => /^\$\s+/.test(line)) ??
+        collapsed.match(/(\$\s+.*?)(?=\s+\d+\.\s+(?:Yes|No)\b|$)/)?.[1]?.trim();
+    if (!reasonLine && !commandLine) {
+        return null;
+    }
+    if (!hasPromptHeader && !reasonLine) {
+        return null;
+    }
+    return { reasonLine, commandLine };
+}
+
+function getCodexApprovalContextForBlock(blockId: string): CodexApprovalContext | null {
+    return codexApprovalContexts.get(blockId) ?? null;
+}
+
+function formatCodexQuestionMessage(blockId: string): string {
+    const approvalContext = getCodexApprovalContextForBlock(blockId);
+    if (approvalContext) {
+        const lines = [approvalContext.reasonLine, approvalContext.commandLine].filter((line) => line != null);
+        if (lines.length > 0) {
+            return lines.join("\n");
+        }
+    }
+    return "Codex output paused";
+}
+
 function createCodexQuestionNotification(blockId: string): AgentNotification {
     return {
         notifyid: getCodexQuestionNotifyId(blockId),
@@ -189,7 +252,22 @@ function createCodexQuestionNotification(blockId: string): AgentNotification {
         windowid: "",
         agent: "codex",
         status: "question",
-        message: "Codex output paused",
+        message: formatCodexQuestionMessage(blockId),
+        timestamp: Date.now(),
+    };
+}
+
+function createCodexCompletionNotification(blockId: string): AgentNotification {
+    return {
+        notifyid: `${CodexCompletionNotifyIdPrefix}${blockId}:${Date.now()}`,
+        oref: `block:${blockId}`,
+        tabid: "",
+        workspaceid: "",
+        windowid: "",
+        agent: "codex",
+        status: "completion",
+        lifecycle: "terminal",
+        message: "Context compacted",
         timestamp: Date.now(),
     };
 }
@@ -205,6 +283,7 @@ function clearCodexQuestionPending(blockId: string): void {
 function resetCodexQuestionTracking(blockId: string): void {
     clearCodexQuestionPending(blockId);
     codexHeartbeatLastSeenTs.delete(blockId);
+    codexApprovalContexts.delete(blockId);
 }
 
 function matchesCodexWorkingHeartbeat(sanitized: string): boolean {
@@ -221,6 +300,14 @@ function matchesStrongCodexTurnStart(sanitized: string): boolean {
         .map((line) => line.trim())
         .filter((line) => line.length > 0);
     return lines.some((line) => /^[•>*-]?\s*working(?:\b|\()/i.test(line));
+}
+
+function matchesCodexTurnCompletionText(sanitized: string): boolean {
+    const lines = sanitized
+        .split("\n")
+        .map((line) => stripTerminalControlSequences(line).trim())
+        .filter((line) => line.length > 0);
+    return lines.some((line) => /^[•>*-]?\s*Context compacted(?:\b|[0-9])/i.test(line));
 }
 
 function clearCodexTurnCompleted(blockId: string): void {
@@ -252,10 +339,14 @@ function scheduleCodexQuestionNotification(blockId: string): void {
         const activeTurn = isActiveCodexTurn(blockId);
         const lastHeartbeatTs = codexHeartbeatLastSeenTs.get(blockId) ?? 0;
         const elapsedMs = Date.now() - lastHeartbeatTs;
+        const approvalContext = getCodexApprovalContextForBlock(blockId);
         logCodexPauseDebug(blockId, "timer-fired", {
             activeTurn,
             lastHeartbeatTs,
             elapsedMs,
+            approvalContextPresent: approvalContext != null,
+            reasonLine: approvalContext?.reasonLine ?? null,
+            commandLine: approvalContext?.commandLine ?? null,
         });
         if (!activeTurn) {
             logCodexPauseDebug(blockId, "skip-notification-inactive-turn");
@@ -269,6 +360,12 @@ function scheduleCodexQuestionNotification(blockId: string): void {
             return;
         }
         codexQuestionActive.add(blockId);
+        logCodexPauseDebug(blockId, approvalContext ? "notification-emitted-approval-context" : "notification-emitted-generic", {
+            elapsedMs,
+            notifyId: getCodexQuestionNotifyId(blockId),
+            reasonLine: approvalContext?.reasonLine ?? null,
+            commandLine: approvalContext?.commandLine ?? null,
+        });
         logCodexPauseDebug(blockId, "notification-emitted", {
             elapsedMs,
             notifyId: getCodexQuestionNotifyId(blockId),
@@ -295,11 +392,21 @@ export function markCodexTurnCompleted(blockId: string): void {
     resetCodexQuestionTracking(blockId);
 }
 
+function notifyCodexTurnCompleted(blockId: string): void {
+    fireAndForget(() => RpcApi.AgentNotifyCommand(TabRpcClient, createCodexCompletionNotification(blockId)));
+}
+
 export function observeTerminalOutputForCodexApproval(blockId: string, rawData: string): void {
     const debugInfo = getCodexPauseDebugInfo(rawData);
     const heartbeatMatch = matchesCodexWorkingHeartbeat(debugInfo.sanitized);
     const strongTurnStartMatch = matchesStrongCodexTurnStart(debugInfo.sanitized);
+    const completionTextMatch = matchesCodexTurnCompletionText(debugInfo.sanitized);
     const activeTurn = isActiveCodexTurn(blockId);
+    const chunkApprovalContext = extractCodexApprovalContext(debugInfo.sanitized);
+    if (chunkApprovalContext) {
+        codexApprovalContexts.set(blockId, chunkApprovalContext);
+    }
+    const approvalContext = getCodexApprovalContextForBlock(blockId);
     logCodexPauseDebug(blockId, "output-observed", {
         activeTurn,
         rawLength: debugInfo.rawLength,
@@ -307,6 +414,11 @@ export function observeTerminalOutputForCodexApproval(blockId: string, rawData: 
         preview: debugInfo.preview,
         heartbeatMatch,
         strongTurnStartMatch,
+        completionTextMatch,
+        approvalContextPresent: approvalContext != null,
+        chunkApprovalContextPresent: chunkApprovalContext != null,
+        reasonLine: approvalContext?.reasonLine ?? null,
+        commandLine: approvalContext?.commandLine ?? null,
     });
     if (isCodexTurnSuppressed(blockId)) {
         if (strongTurnStartMatch) {
@@ -315,20 +427,44 @@ export function observeTerminalOutputForCodexApproval(blockId: string, rawData: 
             });
             clearCodexTurnCompleted(blockId);
         } else {
-        logCodexPauseDebug(blockId, "ignore-output-turn-completed", {
-            classification: debugInfo.classification,
-            preview: debugInfo.preview,
-        });
-        return;
+            logCodexPauseDebug(blockId, "ignore-output-turn-completed", {
+                classification: debugInfo.classification,
+                preview: debugInfo.preview,
+            });
+            return;
         }
     }
     if (debugInfo.classification === "empty-after-sanitize") {
         logCodexPauseDebug(blockId, "ignore-empty-after-sanitize");
         return;
     }
+    if (debugInfo.classification === "whitespace-only") {
+        logCodexPauseDebug(blockId, "ignore-whitespace-only");
+        return;
+    }
+    if (completionTextMatch) {
+        logCodexPauseDebug(blockId, "turn-completed-from-output", {
+            preview: debugInfo.preview,
+        });
+        markCodexTurnCompleted(blockId);
+        notifyCodexTurnCompleted(blockId);
+        return;
+    }
     if (codexQuestionActive.has(blockId)) {
+        if (!heartbeatMatch && approvalContext) {
+            logCodexPauseDebug(blockId, "approval-context-refresh-notification", {
+                preview: debugInfo.preview,
+                reasonLine: approvalContext.reasonLine ?? null,
+                commandLine: approvalContext.commandLine ?? null,
+            });
+            fireAndForget(() => RpcApi.AgentNotifyCommand(TabRpcClient, createCodexQuestionNotification(blockId)));
+            return;
+        }
         logCodexPauseDebug(blockId, "output-resumed-clear-notification", {
             classification: debugInfo.classification,
+            approvalContextPresent: approvalContext != null,
+            reasonLine: approvalContext?.reasonLine ?? null,
+            commandLine: approvalContext?.commandLine ?? null,
         });
         clearCodexApprovalNotification(blockId);
     }
