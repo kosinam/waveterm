@@ -660,9 +660,6 @@ func classifyCodexStopStatus(message string, hasPendingError bool) string {
 		}
 		return ""
 	}
-	if isCodexTerminalQuestion(rawMessage) {
-		return "question"
-	}
 	message = normalizeNotificationMessage(rawMessage)
 	for _, re := range codexTerminalErrorPatterns {
 		if re.MatchString(message) {

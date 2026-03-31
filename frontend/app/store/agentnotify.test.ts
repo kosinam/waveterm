@@ -28,9 +28,9 @@ describe("agentnotify read reset policy", () => {
         expect(shouldResetReadState(existing, incoming)).toBe(false);
     });
 
-    it("re-alerts repeated Codex approval prompts for the same block", () => {
-        const existing = makeNotification({ notifyid: "codex-approval:b1", timestamp: 100 });
-        const incoming = makeNotification({ notifyid: "codex-approval:b1", timestamp: 200 });
+    it("re-alerts repeated Codex question prompts for the same block", () => {
+        const existing = makeNotification({ notifyid: "codex-question:b1", timestamp: 100 });
+        const incoming = makeNotification({ notifyid: "codex-question:b1", timestamp: 200 });
         expect(shouldResetReadState(existing, incoming)).toBe(true);
     });
 

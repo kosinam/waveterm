@@ -49,11 +49,11 @@ function hasSameActionableContent(a: AgentNotification, b: AgentNotification): b
     );
 }
 
-function isCodexApprovalNotification(notification: AgentNotification | null | undefined): boolean {
+function isCodexQuestionNotification(notification: AgentNotification | null | undefined): boolean {
     if (notification == null) {
         return false;
     }
-    return notification.agent === "codex" && notification.status === "question" && notification.notifyid.startsWith("codex-approval:");
+    return notification.agent === "codex" && notification.status === "question" && notification.notifyid.startsWith("codex-question:");
 }
 
 export function shouldResetReadState(existing: AgentNotification | null | undefined, incoming: AgentNotification): boolean {
@@ -64,7 +64,7 @@ export function shouldResetReadState(existing: AgentNotification | null | undefi
         return false;
     }
     if (hasSameActionableContent(existing, incoming)) {
-        return isCodexApprovalNotification(incoming) && incoming.timestamp > existing.timestamp;
+        return isCodexQuestionNotification(incoming) && incoming.timestamp > existing.timestamp;
     }
     return true;
 }

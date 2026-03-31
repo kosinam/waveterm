@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { detectCodexToolApprovalPrompt, isClaudeCodeCommand, isCodexCommand } from "./osc-handlers";
+import { detectCodexQuestionPrompt, detectCodexToolApprovalPrompt, isClaudeCodeCommand, isCodexCommand } from "./osc-handlers";
 
 describe("isClaudeCodeCommand", () => {
     it("matches direct Claude Code invocations", () => {
@@ -53,7 +53,7 @@ $ curl -I https://example.com
 1. Yes, proceed (y)
 2. Yes, and don't ask again for commands that start with curl -I (p)
 3. No, and tell Codex what to do differently (esc)`;
-        expect(detectCodexToolApprovalPrompt(prompt)).toEqual({ command: "curl -I https://example.com" });
+        expect(detectCodexToolApprovalPrompt(prompt)).toBe(true);
     });
 
     it("ignores generic numbered lists", () => {
@@ -62,13 +62,13 @@ $ curl -I https://example.com
 1. Generate a minimal end-of-turn question prompt only
 2. Summarize the exact stop-classifier patterns now in use
 3. Stop here and wait for your confirmation`;
-        expect(detectCodexToolApprovalPrompt(prompt)).toBeNull();
+        expect(detectCodexToolApprovalPrompt(prompt)).toBe(false);
     });
 
     it("handles terminal escape sequences around the selector", () => {
         const prompt =
             "\u001b[33mWould you like to run the following command?\u001b[0m\r\n\r\n$ git commit -m \"x\"\r\n\r\n1. Yes, proceed (y)\r\n2. Yes, and don't ask again for commands that start with git commit (p)\r\n3. No, and tell Codex what to do differently (esc)";
-        expect(detectCodexToolApprovalPrompt(prompt)).toEqual({ command: 'git commit -m "x"' });
+        expect(detectCodexToolApprovalPrompt(prompt)).toBe(true);
     });
 
     it("matches approvals without the persistent allow option", () => {
@@ -78,7 +78,7 @@ $ npm test
 
 1. Yes, proceed (y)
 2. No, and tell Codex what to do differently (esc)`;
-        expect(detectCodexToolApprovalPrompt(prompt)).toEqual({ command: "npm test" });
+        expect(detectCodexToolApprovalPrompt(prompt)).toBe(true);
     });
 
     it("ignores prompts without a deny option", () => {
@@ -88,6 +88,39 @@ $ npm test
 
 1. Yes, proceed (y)
 2. Show diff`;
-        expect(detectCodexToolApprovalPrompt(prompt)).toBeNull();
+        expect(detectCodexToolApprovalPrompt(prompt)).toBe(false);
+    });
+});
+
+describe("detectCodexQuestionPrompt", () => {
+    it("matches the approval selector as a high-confidence question", () => {
+        const prompt = `Would you like to run the following command?
+
+Reason: Do you want to allow me to run curl -I https://example.com?
+
+$ curl -I https://example.com
+
+1. Yes, proceed (y)
+2. Yes, and don't ask again for commands that start with curl -I (p)
+3. No, and tell Codex what to do differently (esc)`;
+        expect(detectCodexQuestionPrompt(prompt)?.message).toBe("Approval required");
+    });
+
+    it("matches generic explicit-choice prompts", () => {
+        const prompt = `Would you like me to proceed with the next verification step?
+
+1. Generate a minimal end-of-turn question prompt only
+2. Summarize the exact stop-classifier patterns now in use
+3. Stop here and wait for your confirmation`;
+        expect(detectCodexQuestionPrompt(prompt)?.message).toBe("Would you like me to proceed with the next verification step?");
+    });
+
+    it("ignores explanatory numbered lists without a prompt", () => {
+        const prompt = `Implementation notes:
+
+1. Refactor the notification store
+2. Update the keybinding docs
+3. Add regression tests`;
+        expect(detectCodexQuestionPrompt(prompt)).toBeNull();
     });
 });

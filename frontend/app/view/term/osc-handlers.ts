@@ -29,11 +29,14 @@ const ClaudeCodeRegex = /^claude\b/;
 const CodexRegex = /^codex\b/;
 const OpencodeRegex = /^opencode\b/;
 const LongRunningShellNotificationThresholdMs = 10_000;
-const CodexApprovalNotifyIdPrefix = "codex-approval:";
+const CodexQuestionNotifyIdPrefix = "codex-question:";
 const CodexApprovalBufferMaxLen = 12_000;
+const CodexApprovalPauseMs = 1000;
+const CodexQuestionPauseMs = 3000;
 
-type CodexApprovalPrompt = {
-    command: string | null;
+type CodexQuestionPrompt = {
+    message: string;
+    signature: string;
 };
 
 type RunningShellCommand = {
@@ -42,8 +45,10 @@ type RunningShellCommand = {
 };
 
 const runningShellCommands = new Map<string, RunningShellCommand>();
-const codexApprovalBuffers = new Map<string, string>();
-const codexApprovalActive = new Set<string>();
+const codexQuestionBuffers = new Map<string, string>();
+const codexQuestionActive = new Set<string>();
+const codexQuestionPendingTimers = new Map<string, number>();
+const codexQuestionActiveSignatures = new Map<string, string>();
 
 type Osc16162Command =
     | { command: "A"; data: Record<string, never> }
@@ -131,8 +136,8 @@ export function isOpencodeCommand(decodedCmd: string): boolean {
     return OpencodeRegex.test(normalizeCmd(decodedCmd));
 }
 
-function getCodexApprovalNotifyId(blockId: string): string {
-    return `${CodexApprovalNotifyIdPrefix}${blockId}`;
+function getCodexQuestionNotifyId(blockId: string): string {
+    return `${CodexQuestionNotifyIdPrefix}${blockId}`;
 }
 
 function stripTerminalControlSequences(data: string): string {
@@ -143,75 +148,202 @@ function stripTerminalControlSequences(data: string): string {
         .replace(/\r/g, "\n");
 }
 
-export function detectCodexToolApprovalPrompt(data: string): CodexApprovalPrompt | null {
+export function detectCodexToolApprovalPrompt(data: string): boolean {
+    return looksLikeCodexApprovalPromptCandidate(data);
+}
+
+function looksLikeCodexApprovalPromptCandidate(data: string): boolean {
     const sanitized = stripTerminalControlSequences(data);
     const normalized = sanitized.replace(/\u00a0/g, " ");
     if (!/Would you like to run the following command\?/i.test(normalized)) {
-        return null;
+        return false;
     }
     if (!/1\.\s+Yes,\s*proceed/i.test(normalized)) {
-        return null;
+        return false;
     }
     if (!/\b(?:2|3)\.\s+No,\s+and tell Codex what to do differently/i.test(normalized)) {
-        return null;
+        return false;
     }
     const hasSecondaryOption = /\b2\.\s+/i.test(normalized);
     const hasPersistentAllowOption = /don't ask again/i.test(normalized);
-    if (!hasSecondaryOption && !hasPersistentAllowOption) {
-        return null;
-    }
-    const commandMatch = normalized.match(/^\$\s+(.+)$/m);
-    return { command: commandMatch?.[1]?.trim() ?? null };
+    return hasSecondaryOption || hasPersistentAllowOption;
 }
 
-function createCodexApprovalNotification(blockId: string, prompt: CodexApprovalPrompt): AgentNotification {
-    const message = prompt.command ? `Approval required: ${prompt.command}` : "Codex is waiting for approval";
+function collapsePromptLine(text: string): string {
+    return text.replace(/\s+/g, " ").trim();
+}
+
+function hasExplicitChoiceLines(text: string): boolean {
+    const matches = [...text.matchAll(/(?:^|\n)\s*([1-9])\.\s+.+$/gm)];
+    const numbers = new Set(matches.map((match) => match[1]));
+    if (numbers.size >= 2) {
+        return true;
+    }
+    const inlineMatches = [...text.matchAll(/(?:^|\s)([1-9])\.\s+\S/gm)];
+    return new Set(inlineMatches.map((match) => match[1])).size >= 2;
+}
+
+function looksLikeCodexPromptChunk(text: string): boolean {
+    return (
+        /Would you like/i.test(text) ||
+        /What would you like me to do/i.test(text) ||
+        /How would you like me to proceed/i.test(text) ||
+        /Reply with a number/i.test(text) ||
+        /Yes,\s*proceed/i.test(text) ||
+        /don't ask again/i.test(text) ||
+        /No,\s+and tell Codex/i.test(text) ||
+        hasExplicitChoiceLines(text)
+    );
+}
+
+export function detectCodexQuestionPrompt(data: string): CodexQuestionPrompt | null {
+    const approvalPrompt = detectCodexToolApprovalPrompt(data);
+    if (approvalPrompt) {
+        return { message: "Approval required", signature: "approval:pending" };
+    }
+
+    const sanitized = stripTerminalControlSequences(data);
+    const normalized = sanitized.replace(/\u00a0/g, " ");
+    if (!hasExplicitChoiceLines(normalized)) {
+        return null;
+    }
+    if (
+        !/\?$/.test(stringsLastNonEmptyLine(normalized)) &&
+        !/Would you like/i.test(normalized) &&
+        !/What would you like me to do/i.test(normalized) &&
+        !/How would you like me to proceed/i.test(normalized) &&
+        !/Reply with a number/i.test(normalized)
+    ) {
+        return null;
+    }
+    const message = extractCodexQuestionMessage(normalized) || "Codex is waiting for input";
+    return { message, signature: `prompt:${collapsePromptLine(normalized).slice(0, 500)}` };
+}
+
+function extractCodexQuestionMessage(text: string): string {
+    const lines = text
+        .split("\n")
+        .map((line) => collapsePromptLine(line))
+        .filter(Boolean);
+    for (let idx = lines.length - 1; idx >= 0; idx--) {
+        const line = lines[idx];
+        if (/^[1-9]\.\s+/.test(line)) {
+            continue;
+        }
+        if (/^\$/.test(line) || /^Reason:/i.test(line)) {
+            continue;
+        }
+        if (
+            /\?$/.test(line) ||
+            /Would you like/i.test(line) ||
+            /What would you like me to do/i.test(line) ||
+            /How would you like me to proceed/i.test(line) ||
+            /Reply with a number/i.test(line)
+        ) {
+            return line;
+        }
+    }
+    return stringsFirstNonEmptyLine(text);
+}
+
+function stringsFirstNonEmptyLine(text: string): string {
+    for (const line of text.split("\n")) {
+        const trimmed = line.trim();
+        if (trimmed) {
+            return trimmed;
+        }
+    }
+    return "";
+}
+
+function stringsLastNonEmptyLine(text: string): string {
+    const lines = text.split("\n");
+    for (let idx = lines.length - 1; idx >= 0; idx--) {
+        const trimmed = lines[idx].trim();
+        if (trimmed) {
+            return trimmed;
+        }
+    }
+    return "";
+}
+
+function createCodexQuestionNotification(blockId: string, prompt: CodexQuestionPrompt): AgentNotification {
     return {
-        notifyid: getCodexApprovalNotifyId(blockId),
+        notifyid: getCodexQuestionNotifyId(blockId),
         oref: `block:${blockId}`,
         tabid: "",
         workspaceid: "",
         windowid: "",
         agent: "codex",
         status: "question",
-        message: message,
+        message: prompt.message,
         timestamp: Date.now(),
     };
 }
 
-function resetCodexApprovalTracking(blockId: string): void {
-    codexApprovalBuffers.delete(blockId);
+function clearCodexQuestionPending(blockId: string): void {
+    const timerId = codexQuestionPendingTimers.get(blockId);
+    if (timerId != null) {
+        window.clearTimeout(timerId);
+        codexQuestionPendingTimers.delete(blockId);
+    }
+}
+
+function resetCodexQuestionTracking(blockId: string): void {
+    codexQuestionBuffers.delete(blockId);
+    clearCodexQuestionPending(blockId);
+}
+
+function scheduleCodexQuestionNotification(blockId: string): void {
+    clearCodexQuestionPending(blockId);
+    const buffer = codexQuestionBuffers.get(blockId) ?? "";
+    const pauseMs = looksLikeCodexApprovalPromptCandidate(buffer) ? CodexApprovalPauseMs : CodexQuestionPauseMs;
+    const timerId = window.setTimeout(() => {
+        codexQuestionPendingTimers.delete(blockId);
+        const latestBuffer = codexQuestionBuffers.get(blockId) ?? "";
+        const prompt = detectCodexQuestionPrompt(latestBuffer);
+        if (!prompt) {
+            return;
+        }
+        if (codexQuestionActiveSignatures.get(blockId) === prompt.signature) {
+            return;
+        }
+        codexQuestionActive.add(blockId);
+        codexQuestionActiveSignatures.set(blockId, prompt.signature);
+        fireAndForget(() => RpcApi.AgentNotifyCommand(TabRpcClient, createCodexQuestionNotification(blockId, prompt)));
+    }, pauseMs);
+    codexQuestionPendingTimers.set(blockId, timerId);
 }
 
 export function clearCodexApprovalNotification(blockId: string): void {
-    resetCodexApprovalTracking(blockId);
-    if (!codexApprovalActive.delete(blockId)) {
+    resetCodexQuestionTracking(blockId);
+    codexQuestionActiveSignatures.delete(blockId);
+    if (!codexQuestionActive.delete(blockId)) {
         return;
     }
-    fireAndForget(() => RpcApi.ClearAgentNotificationCommand(TabRpcClient, getCodexApprovalNotifyId(blockId)));
+    fireAndForget(() => RpcApi.ClearAgentNotificationCommand(TabRpcClient, getCodexQuestionNotifyId(blockId)));
 }
 
 export function observeTerminalOutputForCodexApproval(blockId: string, rawData: string): void {
     const runningCommand = runningShellCommands.get(blockId);
     if (!runningCommand || !isCodexCommand(runningCommand.command ?? "")) {
-        resetCodexApprovalTracking(blockId);
+        resetCodexQuestionTracking(blockId);
         return;
     }
     const chunk = stripTerminalControlSequences(rawData).trim();
     if (!chunk) {
         return;
     }
-    const nextBuffer = `${codexApprovalBuffers.get(blockId) ?? ""}\n${chunk}`.slice(-CodexApprovalBufferMaxLen);
-    codexApprovalBuffers.set(blockId, nextBuffer);
-    if (codexApprovalActive.has(blockId)) {
+    const nextBuffer = `${codexQuestionBuffers.get(blockId) ?? ""}\n${chunk}`.slice(-CodexApprovalBufferMaxLen);
+    codexQuestionBuffers.set(blockId, nextBuffer);
+    if (looksLikeCodexPromptChunk(nextBuffer)) {
+        scheduleCodexQuestionNotification(blockId);
         return;
     }
-    const prompt = detectCodexToolApprovalPrompt(nextBuffer);
-    if (!prompt) {
-        return;
+    clearCodexQuestionPending(blockId);
+    if (codexQuestionActive.has(blockId) && !looksLikeCodexPromptChunk(chunk)) {
+        clearCodexApprovalNotification(blockId);
     }
-    codexApprovalActive.add(blockId);
-    fireAndForget(() => RpcApi.AgentNotifyCommand(TabRpcClient, createCodexApprovalNotification(blockId, prompt)));
 }
 
 export function setRunningShellCommand(blockId: string, command: string | null, startTs = Date.now()): void {
