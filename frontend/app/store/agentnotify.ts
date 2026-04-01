@@ -56,7 +56,10 @@ export function shouldResetReadState(existing: AgentNotification | null | undefi
     if (!unreadStatuses.has(incoming.status ?? "")) {
         return false;
     }
-    if (hasSameActionableContent(existing, incoming)) {
+    // Only suppress re-notification if it's the exact same event (same content AND same timestamp).
+    // A different timestamp means a new hook invocation — even with identical message text, the
+    // agent is asking again and the user needs to see the badge.
+    if (hasSameActionableContent(existing, incoming) && existing.timestamp === incoming.timestamp) {
         return false;
     }
     return true;
@@ -157,6 +160,9 @@ export function markUnreadNotificationsReadForBlockId(
         if (readIds.has(notification.notifyid)) continue;
         const notificationBlockId = notification.oref?.split(":")[1];
         if (notificationBlockId !== targetBlockId) continue;
+        // Question and waiting notifications require explicit acknowledgment — they represent
+        // Claude blocked on user input and are naturally replaced by the next turn notification.
+        if (notification.status === "question" || notification.status === "waiting") continue;
         const arrivedAt = notificationArrivalMs.get(notification.notifyid) ?? 0;
         if (!opts?.ignoreGracePeriod && now - arrivedAt < notificationKeystrokeGraceMs) continue;
         markAgentNotificationRead(notification.notifyid);

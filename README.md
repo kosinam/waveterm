@@ -97,20 +97,14 @@ wsh agentnotify "Message text" \
     "StopFailure": [
       {
         "hooks": [
-          {
-            "type": "command",
-            "command": "wsh agentnotify \"Task failed\" --status error --beep --workdir \"$PWD\" --branch \"$(git branch --show-current 2>/dev/null)\" --worktree \"$(git rev-parse --show-toplevel 2>/dev/null)\""
-          }
+          { "type": "command", "command": "wsh agenthook claude stopfailure" }
         ]
       }
     ],
     "PostToolUseFailure": [
       {
         "hooks": [
-          {
-            "type": "command",
-            "command": "wsh agentnotify \"Command failed\" --status error --lifecycle intermediate --workdir \"$PWD\" --branch \"$(git branch --show-current 2>/dev/null)\" --worktree \"$(git rev-parse --show-toplevel 2>/dev/null)\""
-          }
+          { "type": "command", "command": "wsh agenthook claude posttooluse" }
         ]
       }
     ]
@@ -118,7 +112,7 @@ wsh agentnotify "Message text" \
 }
 ```
 
-`wsh agenthook claude stop` reads the Claude Code hook JSON from stdin, extracts the last assistant message for completions, and extracts the question text for `permission_prompt` / `elicitation_dialog` / `AskUserQuestion` prompts — no shell or `jq` required. It uses the originating block's ORef as a stable notify ID so each terminal pane has exactly one panel slot.
+`wsh agenthook claude` reads the Claude Code hook JSON from stdin and extracts structured fields — the last assistant message for completions, question text for approval prompts, and real error messages from `PostToolUseFailure` / `StopFailure` payloads. No shell or `jq` required. It uses the originating block's ORef as a stable notify ID so each terminal pane has exactly one panel slot. Tool errors are stored as intermediate state and only surface if the turn ultimately stops in error.
 
 ---
 

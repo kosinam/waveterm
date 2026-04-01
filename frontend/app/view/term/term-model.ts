@@ -209,6 +209,23 @@ export class TermViewModel implements ViewModel {
                     },
                 });
             }
+            if (!isCmd) {
+                const blockData = get(this.blockAtom);
+                const cwd = blockData?.meta?.["cmd:cwd"];
+                if (cwd != null) {
+                    const homedir = blockData?.meta?.["cmd:homedir"];
+                    let displayCwd = cwd;
+                    if (homedir && (cwd === homedir || cwd.startsWith(homedir + "/"))) {
+                        displayCwd = "~" + cwd.slice(homedir.length);
+                    }
+                    rtn.push({
+                        elemtype: "text",
+                        text: displayCwd,
+                        noGrow: true,
+                        title: cwd,
+                    });
+                }
+            }
             return rtn;
         });
         this.manageConnection = jotai.atom((get) => {

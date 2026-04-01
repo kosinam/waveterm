@@ -397,6 +397,11 @@ func (bc *ShellController) setupAndStartShellProcess(logCtx context.Context, rc 
 		return nil, err
 	}
 	blocklogger.Infof(logCtx, "[conndebug] remoteName: %q, connType: %s, wshEnabled: %v, shell: %q, shellType: %s\n", remoteName, connUnion.ConnType, connUnion.WshEnabled, connUnion.ShellPath, connUnion.ShellType)
+	if connUnion.HomeDir != "" {
+		metaCtx, metaCancelFn := context.WithTimeout(context.Background(), 2*time.Second)
+		defer metaCancelFn()
+		_ = wstore.UpdateObjectMeta(metaCtx, waveobj.MakeORef(waveobj.OType_Block, bc.BlockId), map[string]any{waveobj.MetaKey_CmdHomedir: connUnion.HomeDir}, false)
+	}
 	var cmdStr string
 	var cmdOpts shellexec.CommandOptsType
 	if bc.ControllerType == BlockController_Shell {
