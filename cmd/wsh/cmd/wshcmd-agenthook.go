@@ -19,7 +19,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/spf13/cobra"
 	"github.com/wavetermdev/waveterm/pkg/baseds"
-	"github.com/wavetermdev/waveterm/pkg/wcore"
 	"github.com/wavetermdev/waveterm/pkg/wshrpc"
 	"github.com/wavetermdev/waveterm/pkg/wshrpc/wshclient"
 )
@@ -65,10 +64,14 @@ var agentHookClaudeCmd = &cobra.Command{
 		switch args[0] {
 		case "stop":
 			return agentHookClaudeStopRun(cmd, args)
+		case "stopfailure":
+			return agentHookClaudeStopFailureRun(cmd, args)
+		case "posttooluse":
+			return agentHookClaudePostToolUseRun(cmd, args)
 		case "notification":
 			return agentHookClaudeNotificationRun(cmd, args)
 		default:
-			return fmt.Errorf("unsupported hook type %q (supported: stop, notification)", args[0])
+			return fmt.Errorf("unsupported hook type %q (supported: stop, stopfailure, posttooluse, notification)", args[0])
 		}
 	},
 	PreRunE: preRunSetupRpcClient,
@@ -173,6 +176,9 @@ type claudeHookInput struct {
 	LastAssistantMessage string          `json:"last_assistant_message"`
 	Message              string          `json:"message"`
 	ToolInput            json.RawMessage `json:"tool_input"`
+	Error                string          `json:"error"`
+	ErrorDetails         string          `json:"error_details"`
+	ToolName             string          `json:"tool_name"`
 }
 
 // claudeTranscriptEntry is one line of the Claude Code JSONL transcript.
@@ -553,6 +559,56 @@ func agentHookClaudeStopRun(cmd *cobra.Command, args []string) (rtnErr error) {
 	return nil
 }
 
+func agentHookClaudeStopFailureRun(cmd *cobra.Command, args []string) (rtnErr error) {
+	defer func() {
+		sendActivity("agenthook-claude-stopfailure", rtnErr == nil)
+	}()
+
+	hookInput, cwd, err := readClaudeHookInput()
+	if err != nil {
+		return err
+	}
+
+	message := strings.TrimSpace(hookInput.LastAssistantMessage)
+	if message == "" {
+		message = strings.TrimSpace(hookInput.ErrorDetails)
+	}
+	if message == "" {
+		message = strings.TrimSpace(hookInput.Error)
+	}
+	if message == "" {
+		message = "Task failed"
+	}
+	message = normalizeNotificationMessage(message)
+
+	if err := sendHookNotificationWithBeep(message, cwd, "error"); err != nil {
+		return fmt.Errorf("sending agent notification: %v", err)
+	}
+	return nil
+}
+
+func agentHookClaudePostToolUseRun(cmd *cobra.Command, args []string) (rtnErr error) {
+	defer func() {
+		sendActivity("agenthook-claude-posttooluse", rtnErr == nil)
+	}()
+
+	hookInput, cwd, err := readClaudeHookInput()
+	if err != nil {
+		return err
+	}
+
+	message := strings.TrimSpace(hookInput.Error)
+	if message == "" {
+		message = "Command failed"
+	}
+	if toolName := strings.TrimSpace(hookInput.ToolName); toolName != "" {
+		message = toolName + ": " + message
+	}
+	message = normalizeNotificationMessage(message)
+
+	return sendHookNotificationForAgentWithNotifyIDLifecycle(message, cwd, "error", "claude", "", agentLifecycleIntermediate)
+}
+
 func readCodexHookInput() (codexHookInput, string, error) {
 	stdinData, err := io.ReadAll(WrappedStdin)
 	if err != nil {
@@ -588,12 +644,9 @@ func hasCodexCompletionText(message string) bool {
 	return false
 }
 
-func classifyCodexStopStatus(message string, hasPendingError bool) string {
+func classifyCodexStopStatus(message string) string {
 	rawMessage := strings.TrimSpace(message)
 	if rawMessage == "" {
-		if hasPendingError {
-			return "error"
-		}
 		return ""
 	}
 	message = normalizeNotificationMessage(rawMessage)
@@ -601,9 +654,6 @@ func classifyCodexStopStatus(message string, hasPendingError bool) string {
 		if re.MatchString(message) {
 			return "error"
 		}
-	}
-	if hasPendingError {
-		return "error"
 	}
 	if hasCodexCompletionText(message) {
 		return "completion"
@@ -780,12 +830,12 @@ func agentHookCodexStopRun(cmd *cobra.Command, args []string) (rtnErr error) {
 		hookInput.LastAssistantMessage,
 		message,
 	)
-	_, hasPendingError := wcore.GetPendingAgentNotification(codexNotifyID(hookInput.SessionID))
-	status := classifyCodexStopStatus(message, hasPendingError)
+	// Note: pending error promotion is handled server-side in finalizeAgentNotification.
+	// The CLI process cannot see the server's in-memory pending store.
+	status := classifyCodexStopStatus(message)
 	log.Printf(
-		"agenthook-codex-stop: session=%q hasPendingError=%v classified_status=%q",
+		"agenthook-codex-stop: session=%q classified_status=%q",
 		hookInput.SessionID,
-		hasPendingError,
 		status,
 	)
 	if status == "" {
