@@ -30,12 +30,10 @@ import debug from "debug";
 import * as jotai from "jotai";
 import { debounce } from "throttle-debounce";
 import {
-    clearCodexApprovalNotification,
     handleOsc16162Command,
     handleOsc52Command,
     handleOsc7Command,
     isClaudeCodeCommand,
-    observeTerminalOutputForCodexApproval,
     setRunningShellCommand,
     type ShellIntegrationStatus,
 } from "./osc-handlers";
@@ -407,7 +405,6 @@ export class TermWrap {
     }
 
     dispose() {
-        clearCodexApprovalNotification(this.blockId);
         this.promptMarkers.forEach((marker) => {
             try {
                 marker.dispose();
@@ -464,7 +461,6 @@ export class TermWrap {
 
     doTerminalWrite(data: string | Uint8Array, setPtyOffset?: number): Promise<void> {
         const dataStr = data instanceof Uint8Array ? new TextDecoder().decode(data) : data;
-        observeTerminalOutputForCodexApproval(this.blockId, dataStr);
         if (isDev() && this.loaded) {
             this.recentWrites.push({ idx: this.recentWritesCounter++, ts: Date.now(), data: dataStr });
             if (this.recentWrites.length > 50) {

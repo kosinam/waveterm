@@ -9,7 +9,6 @@ import {
     getBlockTermDurableAtom,
     getOverrideConfigAtom,
     globalStore,
-    isDev,
     recordTEvent,
     WOS,
 } from "@/store/global";
@@ -30,11 +29,6 @@ const ClaudeCodeRegex = /^claude\b/;
 const CodexRegex = /^codex\b/;
 const OpencodeRegex = /^opencode\b/;
 const LongRunningShellNotificationThresholdMs = 10_000;
-const CodexQuestionNotifyIdPrefix = "codex-question:";
-const CodexCompletionNotifyIdPrefix = "codex-completion:";
-const CodexPauseNotificationMs = 5000;
-const CodexRecentOutputBufferMaxLen = 12_000;
-const CodexHeartbeatSuffix = "esc to interrupt";
 
 type RunningShellCommand = {
     command: string | null;
@@ -42,41 +36,7 @@ type RunningShellCommand = {
 };
 
 const runningShellCommands = new Map<string, RunningShellCommand>();
-const codexQuestionPendingTimers = new Map<string, number>();
-const codexQuestionActive = new Set<string>();
-const codexHeartbeatLastSeenTs = new Map<string, number>();
-const codexTurnCompleted = new Set<string>();
-const codexApprovalContexts = new Map<string, CodexApprovalContext>();
 
-function getCodexPauseDebugInfo(rawData: string): {
-    sanitized: string;
-    preview: string;
-    rawLength: number;
-    classification: "empty-after-sanitize" | "whitespace-only" | "visible-text";
-} {
-    const sanitized = stripTerminalControlSequences(rawData);
-    const trimmed = sanitized.trim();
-    const preview = sanitized.replace(/\s+/g, " ").trim().slice(0, 160);
-    let classification: "empty-after-sanitize" | "whitespace-only" | "visible-text" = "visible-text";
-    if (sanitized.length === 0) {
-        classification = "empty-after-sanitize";
-    } else if (trimmed.length === 0) {
-        classification = "whitespace-only";
-    }
-    return {
-        sanitized,
-        preview,
-        rawLength: rawData.length,
-        classification,
-    };
-}
-
-function logCodexPauseDebug(blockId: string, message: string, data?: Record<string, unknown>): void {
-    if (typeof window === "undefined" || !isDev()) {
-        return;
-    }
-    console.log(`[codex-pause] ${message}`, { blockId, ...data });
-}
 
 type Osc16162Command =
     | { command: "A"; data: Record<string, never> }
@@ -164,331 +124,11 @@ export function isOpencodeCommand(decodedCmd: string): boolean {
     return OpencodeRegex.test(normalizeCmd(decodedCmd));
 }
 
-function getCodexQuestionNotifyId(blockId: string): string {
-    return `${CodexQuestionNotifyIdPrefix}${blockId}`;
-}
-
-function stripTerminalControlSequences(data: string): string {
-    return data
-        .replace(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g, "")
-        .replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, "")
-        .replace(/\x1b[@-Z\\-_]/g, "")
-        .replace(/\r/g, "\n");
-}
-
-function isActiveCodexTurn(blockId: string): boolean {
-    return codexHeartbeatLastSeenTs.has(blockId);
-}
-
-function isCodexTurnSuppressed(blockId: string): boolean {
-    return codexTurnCompleted.has(blockId);
-}
-
-function normalizePromptLine(text: string): string {
-    return text.replace(/\s+/g, " ").trim();
-}
-
-export function looksLikeCodexApprovalPrompt(data: string): boolean {
-    const normalized = stripTerminalControlSequences(data).replace(/\u00a0/g, " ");
-    return (
-        /Would you like to run the following command\?/i.test(normalized) &&
-        /1\.\s+Yes,\s*proceed/i.test(normalized) &&
-        /\b(?:2|3)\.\s+No,\s+and tell Codex what to do differently/i.test(normalized)
-    );
-}
-
-type CodexApprovalContext = {
-    reasonLine?: string;
-    commandLine?: string;
-};
-
-export function extractCodexApprovalContext(data: string): CodexApprovalContext | null {
-    const normalized = stripTerminalControlSequences(data).replace(/\u00a0/g, " ");
-    const lines = normalized
-        .replace(/\r/g, "\n")
-        .replace(/\u00a0/g, " ")
-        .split("\n")
-        .map((line) => normalizePromptLine(line))
-        .filter((line) => line.length > 0);
-    const collapsed = normalizePromptLine(normalized);
-    const hasPromptHeader =
-        lines.some((line) => /Would you like to run the following command\?/i.test(line)) ||
-        /Would you like to run the following command\?/i.test(collapsed);
-    const reasonLine =
-        lines.find((line) => /^Reason:/i.test(line)) ??
-        collapsed.match(/(Reason:\s.*?)(?=\s+\$\s|\s+\d+\.\s+(?:Yes|No)\b|$)/i)?.[1]?.trim();
-    const commandLine =
-        lines.find((line) => /^\$\s+/.test(line)) ??
-        collapsed.match(/(\$\s+.*?)(?=\s+\d+\.\s+(?:Yes|No)\b|$)/)?.[1]?.trim();
-    if (!reasonLine && !commandLine) {
-        return null;
-    }
-    if (!hasPromptHeader && !reasonLine) {
-        return null;
-    }
-    return { reasonLine, commandLine };
-}
-
-function getCodexApprovalContextForBlock(blockId: string): CodexApprovalContext | null {
-    return codexApprovalContexts.get(blockId) ?? null;
-}
-
-function formatCodexQuestionMessage(blockId: string): string {
-    const approvalContext = getCodexApprovalContextForBlock(blockId);
-    if (approvalContext) {
-        const lines = [approvalContext.reasonLine, approvalContext.commandLine].filter((line) => line != null);
-        if (lines.length > 0) {
-            return lines.join("\n");
-        }
-    }
-    return "Codex output paused";
-}
-
-function createCodexQuestionNotification(blockId: string): AgentNotification {
-    return {
-        notifyid: getCodexQuestionNotifyId(blockId),
-        oref: `block:${blockId}`,
-        tabid: "",
-        workspaceid: "",
-        windowid: "",
-        agent: "codex",
-        status: "question",
-        message: formatCodexQuestionMessage(blockId),
-        timestamp: Date.now(),
-    };
-}
-
-function createCodexCompletionNotification(blockId: string): AgentNotification {
-    return {
-        notifyid: `${CodexCompletionNotifyIdPrefix}${blockId}:${Date.now()}`,
-        oref: `block:${blockId}`,
-        tabid: "",
-        workspaceid: "",
-        windowid: "",
-        agent: "codex",
-        status: "completion",
-        lifecycle: "terminal",
-        message: "Context compacted",
-        timestamp: Date.now(),
-    };
-}
-
-function clearCodexQuestionPending(blockId: string): void {
-    const timerId = codexQuestionPendingTimers.get(blockId);
-    if (timerId != null) {
-        globalThis.clearTimeout(timerId);
-        codexQuestionPendingTimers.delete(blockId);
-    }
-}
-
-function resetCodexQuestionTracking(blockId: string): void {
-    clearCodexQuestionPending(blockId);
-    codexHeartbeatLastSeenTs.delete(blockId);
-    codexApprovalContexts.delete(blockId);
-}
-
-function matchesCodexWorkingHeartbeat(sanitized: string): boolean {
-    const normalized = sanitized.toLowerCase();
-    return normalized.includes(CodexHeartbeatSuffix);
-}
-
-function matchesStrongCodexTurnStart(sanitized: string): boolean {
-    const lines = sanitized
-        .split("\n")
-        .map((line) => line.trim())
-        .filter((line) => line.length > 0);
-    return lines.some((line) => line.toLowerCase().includes(CodexHeartbeatSuffix));
-}
-
-function matchesCodexTurnCompletionText(sanitized: string): boolean {
-    const lines = sanitized
-        .split("\n")
-        .map((line) => stripTerminalControlSequences(line).trim())
-        .filter((line) => line.length > 0);
-    return lines.some((line) => /^[•>*-]?\s*Context compacted(?:\b|[0-9])/i.test(line));
-}
-
-function clearCodexTurnCompleted(blockId: string): void {
-    if (!codexTurnCompleted.delete(blockId)) {
-        return;
-    }
-    logCodexPauseDebug(blockId, "turn-completed-cleared");
-}
-
-function scheduleCodexQuestionNotification(blockId: string): void {
-    if (!isActiveCodexTurn(blockId)) {
-        logCodexPauseDebug(blockId, "skip-schedule-inactive-turn");
-        resetCodexQuestionTracking(blockId);
-        return;
-    }
-    if (isCodexTurnSuppressed(blockId)) {
-        logCodexPauseDebug(blockId, "skip-schedule-turn-completed");
-        resetCodexQuestionTracking(blockId);
-        return;
-    }
-    clearCodexQuestionPending(blockId);
-    logCodexPauseDebug(blockId, "timer-scheduled", {
-        pauseMs: CodexPauseNotificationMs,
-        activeNotification: codexQuestionActive.has(blockId),
-        lastHeartbeatTs: codexHeartbeatLastSeenTs.get(blockId) ?? null,
-    });
-    const timerId = globalThis.setTimeout(() => {
-        codexQuestionPendingTimers.delete(blockId);
-        const activeTurn = isActiveCodexTurn(blockId);
-        const lastHeartbeatTs = codexHeartbeatLastSeenTs.get(blockId) ?? 0;
-        const elapsedMs = Date.now() - lastHeartbeatTs;
-        const approvalContext = getCodexApprovalContextForBlock(blockId);
-        logCodexPauseDebug(blockId, "timer-fired", {
-            activeTurn,
-            lastHeartbeatTs,
-            elapsedMs,
-            approvalContextPresent: approvalContext != null,
-            reasonLine: approvalContext?.reasonLine ?? null,
-            commandLine: approvalContext?.commandLine ?? null,
-        });
-        if (!activeTurn) {
-            logCodexPauseDebug(blockId, "skip-notification-inactive-turn");
-            return;
-        }
-        if (elapsedMs < CodexPauseNotificationMs) {
-            logCodexPauseDebug(blockId, "skip-notification-recent-output", {
-                elapsedMs,
-                thresholdMs: CodexPauseNotificationMs,
-            });
-            return;
-        }
-        codexQuestionActive.add(blockId);
-        logCodexPauseDebug(blockId, approvalContext ? "notification-emitted-approval-context" : "notification-emitted-generic", {
-            elapsedMs,
-            notifyId: getCodexQuestionNotifyId(blockId),
-            reasonLine: approvalContext?.reasonLine ?? null,
-            commandLine: approvalContext?.commandLine ?? null,
-        });
-        logCodexPauseDebug(blockId, "notification-emitted", {
-            elapsedMs,
-            notifyId: getCodexQuestionNotifyId(blockId),
-        });
-        fireAndForget(() => RpcApi.AgentNotifyCommand(TabRpcClient, createCodexQuestionNotification(blockId)));
-    }, CodexPauseNotificationMs);
-    codexQuestionPendingTimers.set(blockId, timerId);
-}
-
-export function clearCodexApprovalNotification(blockId: string): void {
-    if (!codexQuestionActive.delete(blockId)) {
-        return;
-    }
-    logCodexPauseDebug(blockId, "notification-cleared", {
-        notifyId: getCodexQuestionNotifyId(blockId),
-    });
-    fireAndForget(() => RpcApi.ClearAgentNotificationCommand(TabRpcClient, getCodexQuestionNotifyId(blockId)));
-}
-
-export function markCodexTurnCompleted(blockId: string): void {
-    codexTurnCompleted.add(blockId);
-    logCodexPauseDebug(blockId, "turn-completed-marked");
-    clearCodexApprovalNotification(blockId);
-    resetCodexQuestionTracking(blockId);
-}
-
-function notifyCodexTurnCompleted(blockId: string): void {
-    fireAndForget(() => RpcApi.AgentNotifyCommand(TabRpcClient, createCodexCompletionNotification(blockId)));
-}
-
-export function observeTerminalOutputForCodexApproval(blockId: string, rawData: string): void {
-    const debugInfo = getCodexPauseDebugInfo(rawData);
-    const heartbeatMatch = matchesCodexWorkingHeartbeat(debugInfo.sanitized);
-    const strongTurnStartMatch = matchesStrongCodexTurnStart(debugInfo.sanitized);
-    const completionTextMatch = matchesCodexTurnCompletionText(debugInfo.sanitized);
-    const activeTurn = isActiveCodexTurn(blockId);
-    const chunkApprovalContext = extractCodexApprovalContext(debugInfo.sanitized);
-    if (chunkApprovalContext) {
-        codexApprovalContexts.set(blockId, chunkApprovalContext);
-    }
-    const approvalContext = getCodexApprovalContextForBlock(blockId);
-    logCodexPauseDebug(blockId, "output-observed", {
-        activeTurn,
-        rawLength: debugInfo.rawLength,
-        classification: debugInfo.classification,
-        preview: debugInfo.preview,
-        heartbeatMatch,
-        strongTurnStartMatch,
-        completionTextMatch,
-        approvalContextPresent: approvalContext != null,
-        chunkApprovalContextPresent: chunkApprovalContext != null,
-        reasonLine: approvalContext?.reasonLine ?? null,
-        commandLine: approvalContext?.commandLine ?? null,
-    });
-    if (isCodexTurnSuppressed(blockId)) {
-        if (strongTurnStartMatch) {
-            logCodexPauseDebug(blockId, "turn-completed-cleared-from-output", {
-                preview: debugInfo.preview,
-            });
-            clearCodexTurnCompleted(blockId);
-        } else {
-            logCodexPauseDebug(blockId, "ignore-output-turn-completed", {
-                classification: debugInfo.classification,
-                preview: debugInfo.preview,
-            });
-            return;
-        }
-    }
-    if (debugInfo.classification === "empty-after-sanitize") {
-        logCodexPauseDebug(blockId, "ignore-empty-after-sanitize");
-        return;
-    }
-    if (debugInfo.classification === "whitespace-only") {
-        logCodexPauseDebug(blockId, "ignore-whitespace-only");
-        return;
-    }
-    if (completionTextMatch) {
-        logCodexPauseDebug(blockId, "turn-completed-from-output", {
-            preview: debugInfo.preview,
-        });
-        markCodexTurnCompleted(blockId);
-        notifyCodexTurnCompleted(blockId);
-        return;
-    }
-    if (codexQuestionActive.has(blockId)) {
-        if (!heartbeatMatch && approvalContext) {
-            logCodexPauseDebug(blockId, "approval-context-refresh-notification", {
-                preview: debugInfo.preview,
-                reasonLine: approvalContext.reasonLine ?? null,
-                commandLine: approvalContext.commandLine ?? null,
-            });
-            fireAndForget(() => RpcApi.AgentNotifyCommand(TabRpcClient, createCodexQuestionNotification(blockId)));
-            return;
-        }
-        logCodexPauseDebug(blockId, "output-resumed-clear-notification", {
-            classification: debugInfo.classification,
-            approvalContextPresent: approvalContext != null,
-            reasonLine: approvalContext?.reasonLine ?? null,
-            commandLine: approvalContext?.commandLine ?? null,
-        });
-        clearCodexApprovalNotification(blockId);
-    }
-    if (!heartbeatMatch) {
-        logCodexPauseDebug(blockId, "ignore-non-heartbeat-output", {
-            classification: debugInfo.classification,
-            preview: debugInfo.preview,
-        });
-        return;
-    }
-    const lastHeartbeatTs = Date.now();
-    codexHeartbeatLastSeenTs.set(blockId, lastHeartbeatTs);
-    logCodexPauseDebug(blockId, "heartbeat-updated", {
-        lastHeartbeatTs,
-        classification: debugInfo.classification,
-    });
-    scheduleCodexQuestionNotification(blockId);
-}
 
 export function setRunningShellCommand(blockId: string, command: string | null, startTs = Date.now()): void {
     if (!command) {
         runningShellCommands.delete(blockId);
         return;
-    }
-    if (isCodexCommand(command)) {
-        clearCodexTurnCompleted(blockId);
     }
     runningShellCommands.set(blockId, { command, startTs });
 }
@@ -576,7 +216,6 @@ function handleShellIntegrationCommandStart(
     cmd: { command: "C"; data: { cmd64?: string } },
     rtInfo: ObjRTInfo // this is passed by reference and modified inside of this function
 ): void {
-    clearCodexApprovalNotification(blockId);
     rtInfo["shell:state"] = "running-command";
     globalStore.set(termWrap.shellIntegrationStatusAtom, "running-command");
     const connName = globalStore.get(getBlockMetaKeyAtom(blockId, "connection")) ?? "";
@@ -786,7 +425,6 @@ export function handleOsc16162Command(data: string, blockId: string, loaded: boo
     const rtInfo: ObjRTInfo = {};
     switch (cmd.command) {
         case "A": {
-            clearCodexApprovalNotification(blockId);
             runningShellCommands.delete(blockId);
             rtInfo["shell:state"] = "ready";
             globalStore.set(termWrap.shellIntegrationStatusAtom, "ready");
@@ -828,7 +466,6 @@ export function handleOsc16162Command(data: string, blockId: string, loaded: boo
             }
             break;
         case "D":
-            clearCodexApprovalNotification(blockId);
             globalStore.set(termWrap.claudeCodeActiveAtom, false);
             if (cmd.data.exitcode != null) {
                 rtInfo["shell:lastcmdexitcode"] = cmd.data.exitcode;
@@ -854,7 +491,6 @@ export function handleOsc16162Command(data: string, blockId: string, loaded: boo
             }
             break;
         case "R":
-            clearCodexApprovalNotification(blockId);
             runningShellCommands.delete(blockId);
             globalStore.set(termWrap.shellIntegrationStatusAtom, null);
             globalStore.set(termWrap.claudeCodeActiveAtom, false);

@@ -42,9 +42,10 @@ Supported hook types (opencode):
   event         Process a single opencode event JSON from stdin
 
 Supported hook types (codex):
-  stop            Final assistant response for a Codex session
-  posttooluse     Post-tool hook (currently Bash-focused for error detection)
-  userpromptsubmit Clear the active notification when the user re-engages
+  stop              Final assistant response for a Codex session
+  posttooluse       Post-tool hook (currently Bash-focused for error detection)
+  userpromptsubmit  Clear the active notification when the user re-engages
+  notification      Agent notification or question hook
 
 Example ~/.claude/settings.json Stop hook:
   {"type": "command", "command": "wsh agenthook claude stop"}
@@ -100,8 +101,10 @@ var agentHookCodexCmd = &cobra.Command{
 			return agentHookCodexPostToolUseRun(cmd, args)
 		case "userpromptsubmit":
 			return agentHookCodexUserPromptSubmitRun(cmd, args)
+		case "notification":
+			return agentHookCodexNotificationRun(cmd, args)
 		default:
-			return fmt.Errorf("unsupported hook type %q (supported: stop, posttooluse, userpromptsubmit)", args[0])
+			return fmt.Errorf("unsupported hook type %q (supported: stop, posttooluse, userpromptsubmit, notification)", args[0])
 		}
 	},
 	PreRunE: preRunSetupRpcClient,
@@ -194,6 +197,7 @@ type codexHookInput struct {
 	LastAssistantMessage string          `json:"last_assistant_message"`
 	ToolName             string          `json:"tool_name"`
 	ToolResponse         json.RawMessage `json:"tool_response"`
+	Message              string          `json:"message"`
 }
 
 const (
@@ -202,30 +206,7 @@ const (
 )
 
 var (
-	codexExitCodeRegexp       = regexp.MustCompile(`(?i)\b(?:exit(?:ed)?(?: with)?(?: code)?|status)\s*[:=]?\s*([1-9][0-9]*)\b`)
-	codexQuestionTextPatterns = []*regexp.Regexp{
-		regexp.MustCompile(`(?i)\bneed your approval\b`),
-		regexp.MustCompile(`(?i)\bdo you want me to run\b`),
-		regexp.MustCompile(`(?i)\bdo you want me to\b`),
-		regexp.MustCompile(`(?i)\bdo you want to run\b`),
-		regexp.MustCompile(`(?i)\bwould you like to run\b`),
-		regexp.MustCompile(`(?i)\bwould you like me to\b`),
-		regexp.MustCompile(`(?i)\bplease confirm\b`),
-		regexp.MustCompile(`(?i)\bwhat would you like me to do\b`),
-		regexp.MustCompile(`(?i)\bwhich option\b`),
-		regexp.MustCompile(`(?i)\bhow would you like me to proceed\b`),
-		regexp.MustCompile(`(?i)\bI need your input\b`),
-		regexp.MustCompile(`(?i)\bI need you to answer\b`),
-		regexp.MustCompile(`(?i)\breply with a number\b`),
-		regexp.MustCompile(`(?i)\bdescribe the command\b`),
-	}
-	codexQuestionChoicePatterns = []*regexp.Regexp{
-		regexp.MustCompile(`(?m)^\s*1\.\s+.+$`),
-		regexp.MustCompile(`(?m)^\s*2\.\s+.+$`),
-		regexp.MustCompile(`(?i)\byes,\s*proceed\b`),
-		regexp.MustCompile(`(?i)\bdon't ask again\b`),
-		regexp.MustCompile(`(?i)\bno,\s*(?:and|do not|don't)\b`),
-	}
+	codexExitCodeRegexp    = regexp.MustCompile(`(?i)\b(?:exit(?:ed)?(?: with)?(?: code)?|status)\s*[:=]?\s*([1-9][0-9]*)\b`)
 	codexErrorTextPatterns = []*regexp.Regexp{
 		regexp.MustCompile(`(?i)\bfailed\b`),
 		regexp.MustCompile(`(?i)\berror\b`),
@@ -594,51 +575,6 @@ func codexNotifyID(sessionID string) string {
 	return strings.TrimSpace(sessionID)
 }
 
-func isCodexTerminalQuestion(message string) bool {
-	rawMessage := strings.TrimSpace(message)
-	if rawMessage == "" {
-		return false
-	}
-	normalizedMessage := normalizeNotificationMessage(rawMessage)
-	if normalizedMessage == "" {
-		return false
-	}
-	hasPrompt := false
-	for _, re := range codexQuestionTextPatterns {
-		if re.MatchString(normalizedMessage) {
-			hasPrompt = true
-			break
-		}
-	}
-	choiceMatches := 0
-	for _, re := range codexQuestionChoicePatterns {
-		if re.MatchString(rawMessage) || re.MatchString(normalizedMessage) {
-			choiceMatches++
-		}
-	}
-	inlineOptionMatches := regexp.MustCompile(`(?:^|\s)([1-9])\.\s+\S`).FindAllStringSubmatch(normalizedMessage, -1)
-	choiceNumbers := make(map[string]struct{})
-	for _, match := range inlineOptionMatches {
-		if len(match) == 2 {
-			choiceNumbers[match[1]] = struct{}{}
-		}
-	}
-	if len(choiceNumbers) >= 2 {
-		choiceMatches = 2
-	}
-	if choiceMatches < 2 {
-		return false
-	}
-	if hasPrompt {
-		return true
-	}
-	introLine := strings.TrimSpace(strings.SplitN(rawMessage, "\n", 2)[0])
-	if strings.HasSuffix(introLine, "?") {
-		return true
-	}
-	return true
-}
-
 func hasCodexCompletionText(message string) bool {
 	message = normalizeNotificationMessage(message)
 	if message == "" {
@@ -893,6 +829,23 @@ func agentHookCodexUserPromptSubmitRun(cmd *cobra.Command, args []string) (rtnEr
 	}
 	if err := clearHookNotification(codexNotifyID(hookInput.SessionID)); err != nil {
 		return fmt.Errorf("clearing agent notification: %v", err)
+	}
+	return nil
+}
+
+func agentHookCodexNotificationRun(cmd *cobra.Command, args []string) (rtnErr error) {
+	defer func() {
+		sendActivity("agenthook-codex-notification", rtnErr == nil)
+	}()
+
+	hookInput, cwd, err := readCodexHookInput()
+	if err != nil {
+		return err
+	}
+
+	message := normalizeNotificationMessage(hookInput.Message)
+	if err := sendHookNotificationWithBeepForAgentWithNotifyID(message, cwd, "question", "codex", codexNotifyID(hookInput.SessionID)); err != nil {
+		return fmt.Errorf("sending agent notification: %v", err)
 	}
 	return nil
 }

@@ -3,7 +3,6 @@
 
 import { BlockModel } from "@/app/block/block-model";
 import { atoms } from "@/app/store/global-atoms";
-import { markCodexTurnCompleted } from "@/app/view/term/osc-handlers";
 import { RpcApi } from "@/app/store/wshclientapi";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
 import { getLayoutModelForStaticTab } from "@/layout/index";
@@ -50,30 +49,6 @@ function hasSameActionableContent(a: AgentNotification, b: AgentNotification): b
     );
 }
 
-function isCodexQuestionNotification(notification: AgentNotification | null | undefined): boolean {
-    if (notification == null) {
-        return false;
-    }
-    return notification.agent === "codex" && notification.status === "question" && notification.notifyid.startsWith("codex-question:");
-}
-
-export function shouldDisarmCodexPauseForNotification(notification: AgentNotification | null | undefined): boolean {
-    if (notification == null) {
-        return false;
-    }
-    if (notification.agent !== "codex") {
-        return false;
-    }
-    if (!notification.oref?.startsWith("block:")) {
-        return false;
-    }
-    const lifecycle = notification.lifecycle ?? "terminal";
-    if (lifecycle !== "terminal") {
-        return false;
-    }
-    return notification.status === "completion" || notification.status === "error";
-}
-
 export function shouldResetReadState(existing: AgentNotification | null | undefined, incoming: AgentNotification): boolean {
     if (existing == null) {
         return true;
@@ -82,7 +57,7 @@ export function shouldResetReadState(existing: AgentNotification | null | undefi
         return false;
     }
     if (hasSameActionableContent(existing, incoming)) {
-        return isCodexQuestionNotification(incoming) && incoming.timestamp > existing.timestamp;
+        return false;
     }
     return true;
 }
@@ -318,12 +293,6 @@ export function setupAgentNotifySubscription(): void {
             if (data.notification == null) return;
 
             const incoming = data.notification;
-            if (shouldDisarmCodexPauseForNotification(incoming)) {
-                const blockId = incoming.oref.split(":")[1];
-                if (blockId) {
-                    markCodexTurnCompleted(blockId);
-                }
-            }
             notificationArrivalMs.set(incoming.notifyid, Date.now());
             const existing = globalStore.get(agentNotificationsAtom).find((n) => n.notifyid === incoming.notifyid);
             if (shouldResetReadState(existing, incoming)) {

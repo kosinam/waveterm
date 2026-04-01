@@ -4,7 +4,6 @@ import {
     agentNotificationsAtom,
     agentReadIdsAtom,
     markUnreadNotificationsReadForBlockId,
-    shouldDisarmCodexPauseForNotification,
     shouldResetReadState,
 } from "./agentnotify";
 import { globalStore } from "./jotaiStore";
@@ -35,10 +34,10 @@ describe("agentnotify read reset policy", () => {
         expect(shouldResetReadState(existing, incoming)).toBe(false);
     });
 
-    it("re-alerts repeated Codex question prompts for the same block", () => {
+    it("keeps a read question read on same-content refresh", () => {
         const existing = makeNotification({ notifyid: "codex-question:b1", timestamp: 100 });
         const incoming = makeNotification({ notifyid: "codex-question:b1", timestamp: 200 });
-        expect(shouldResetReadState(existing, incoming)).toBe(true);
+        expect(shouldResetReadState(existing, incoming)).toBe(false);
     });
 
     it("marks a read question unread when it resolves to completion", () => {
@@ -88,39 +87,3 @@ describe("markUnreadNotificationsReadForBlockId", () => {
     });
 });
 
-describe("shouldDisarmCodexPauseForNotification", () => {
-    it("matches terminal Codex completion notifications with a block oref", () => {
-        expect(
-            shouldDisarmCodexPauseForNotification(
-                makeNotification({ status: "completion", lifecycle: "terminal", oref: "block:b1" })
-            )
-        ).toBe(true);
-    });
-
-    it("does not treat Codex question notifications as terminal completion", () => {
-        expect(
-            shouldDisarmCodexPauseForNotification(makeNotification({ status: "question", lifecycle: undefined, oref: "block:b1" }))
-        ).toBe(false);
-    });
-
-    it("ignores intermediate Codex notifications", () => {
-        expect(
-            shouldDisarmCodexPauseForNotification(
-                makeNotification({ status: "error", lifecycle: "intermediate", oref: "block:b1" })
-            )
-        ).toBe(false);
-    });
-
-    it("ignores non-Codex notifications and missing block refs", () => {
-        expect(
-            shouldDisarmCodexPauseForNotification(
-                makeNotification({ agent: "shell", status: "completion", lifecycle: "terminal", oref: "block:b1" })
-            )
-        ).toBe(false);
-        expect(
-            shouldDisarmCodexPauseForNotification(
-                makeNotification({ status: "completion", lifecycle: "terminal", oref: "" })
-            )
-        ).toBe(false);
-    });
-});

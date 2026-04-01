@@ -173,6 +173,13 @@ Then wire up the hook handlers:
 ```json
 {
   "hooks": {
+    "Notification": [
+      {
+        "hooks": [
+          { "type": "command", "command": "wsh agenthook codex notification" }
+        ]
+      }
+    ],
     "Stop": [
       {
         "hooks": [
@@ -201,11 +208,12 @@ Then wire up the hook handlers:
 
 What each hook does:
 
-- `Stop` — sends the terminal notification for the Codex turn, including question prompts when the final message presents explicit options.
+- `Notification` — sends a `question` notification with a beep when Codex needs user approval (command execution, file patches, user input prompts, MCP elicitation).
+- `Stop` — sends a `completion` or `error` notification for the Codex turn based on the final message and any accumulated tool errors.
 - `PostToolUse` (Bash matcher) — records high-confidence Bash failures as intermediate state so they only surface if the turn ultimately stops in error.
 - `UserPromptSubmit` — clears the active notification when you respond, so stale `question` / `error` states do not persist.
 
-⚠️ Note: mid-turn input detection for Codex is best-effort and can be flaky. Codex does not currently provide a dedicated structured "waiting for input" signal for this terminal flow, so the question/approval notification path is inferred from streamed terminal output. Partial redraws or prompt formatting changes can therefore cause missed or imperfect detections.
+⚠️ Note: mid-turn `Notification` hooks require the [headsupanalytics/codex](https://github.com/headsupanalytics/codex) fork, which adds the `Notification` hook event to the Codex CLI (matching Claude Code's hook). The upstream OpenAI Codex CLI does not support this hook.
 
 ---
 

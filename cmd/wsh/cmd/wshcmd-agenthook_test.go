@@ -77,60 +77,6 @@ func TestClassifyCodexPostToolUseIgnoresSuccess(t *testing.T) {
 	}
 }
 
-func TestIsCodexTerminalQuestion(t *testing.T) {
-	prompt := `Would you like me to run the following command?
-
-1. Yes, proceed (y)
-2. No, and tell Codex what to do differently (esc)`
-	if !isCodexTerminalQuestion(prompt) {
-		t.Fatalf("expected explicit choice prompt to classify as a question")
-	}
-	if isCodexTerminalQuestion("I need your approval before I can continue.") {
-		t.Fatalf("did not expect a prompt without choices to classify as a question")
-	}
-}
-
-func TestIsCodexTerminalQuestionApprovalSelector(t *testing.T) {
-	prompt := `Would you like to run the following command?
-
-Reason: Do you want to allow me to run curl -I https://example.com?
-
-$ curl -I https://example.com
-
-1. Yes, proceed (y)
-2. Yes, and don't ask again for commands that start with curl -I (p)
-3. No, and tell Codex what to do differently (esc)`
-	if !isCodexTerminalQuestion(prompt) {
-		t.Fatalf("expected approval selector prompt to classify as a question")
-	}
-}
-
-func TestIsCodexTerminalQuestionLongerPrompt(t *testing.T) {
-	prompt := `Would you like me to proceed with the next verification step?
-
-1. Generate a minimal end-of-turn question prompt only
-2. Summarize the exact stop-classifier patterns now in use
-3. Stop here and wait for your confirmation`
-	if !isCodexTerminalQuestion(prompt) {
-		t.Fatalf("expected longer explicit choice prompt to classify as a question")
-	}
-}
-
-func TestIsCodexTerminalQuestionChoicesOnly(t *testing.T) {
-	prompt := `1. Yes, proceed
-2. No, and tell Codex what to do differently`
-	if !isCodexTerminalQuestion(prompt) {
-		t.Fatalf("expected explicit choices alone to classify as a question")
-	}
-}
-
-func TestIsCodexTerminalQuestionInlineChoices(t *testing.T) {
-	prompt := `Would you like me to proceed with the next verification step? 1. Generate a minimal end-of-turn question prompt only 2. Summarize the exact stop-classifier patterns now in use 3. Stop here and wait for your confirmation`
-	if !isCodexTerminalQuestion(prompt) {
-		t.Fatalf("expected inline numbered choices to classify as a question")
-	}
-}
-
 func TestExtractTranscriptText(t *testing.T) {
 	dir := t.TempDir()
 	transcriptPath := filepath.Join(dir, "codex.jsonl")
