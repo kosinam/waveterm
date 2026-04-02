@@ -160,9 +160,6 @@ export function markUnreadNotificationsReadForBlockId(
         if (readIds.has(notification.notifyid)) continue;
         const notificationBlockId = notification.oref?.split(":")[1];
         if (notificationBlockId !== targetBlockId) continue;
-        // Question and waiting notifications require explicit acknowledgment — they represent
-        // Claude blocked on user input and are naturally replaced by the next turn notification.
-        if (notification.status === "question" || notification.status === "waiting") continue;
         const arrivedAt = notificationArrivalMs.get(notification.notifyid) ?? 0;
         if (!opts?.ignoreGracePeriod && now - arrivedAt < notificationKeystrokeGraceMs) continue;
         markAgentNotificationRead(notification.notifyid);
