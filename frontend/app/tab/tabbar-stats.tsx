@@ -4,7 +4,7 @@
 import { waveEventSubscribeSingle } from "@/app/store/wps";
 import dayjs from "dayjs";
 import utc from "dayjs/plugin/utc";
-import { memo, useEffect, useRef, useState } from "react";
+import { memo, useEffect, useState } from "react";
 
 dayjs.extend(utc);
 
@@ -33,7 +33,6 @@ function getLoadColor(load1: number | null): string {
 const TabBarStats = memo(() => {
     const [time, setTime] = useState(() => dayjs());
     const [sysInfo, setSysInfo] = useState<SysInfo>({ cpu: null, memPct: null, load1: null });
-    const sysInfoRef = useRef<SysInfo>({ cpu: null, memPct: null, load1: null });
 
     useEffect(() => {
         const interval = setInterval(() => setTime(dayjs()), 1000);
@@ -43,6 +42,7 @@ const TabBarStats = memo(() => {
     useEffect(() => {
         const unsubFn = waveEventSubscribeSingle({
             eventType: "sysinfo",
+            scope: "local",
             handler: (event) => {
                 const data = event.data;
                 if (data?.values == null) return;
@@ -51,7 +51,6 @@ const TabBarStats = memo(() => {
                 const memTotal = data.values["mem:total"];
                 const memPct = memUsed != null && memTotal != null && memTotal > 0 ? (memUsed / memTotal) * 100 : null;
                 const load1 = data.values["load:1"] ?? null;
-                sysInfoRef.current = { cpu, memPct, load1 };
                 setSysInfo({ cpu, memPct, load1 });
             },
         });
@@ -61,9 +60,9 @@ const TabBarStats = memo(() => {
     const localTime = time.format("HH:mm");
     const utcTime = time.utc().format("HH:mm") + "Z";
 
-    const cpuStr = sysInfo.cpu != null ? `CPU: ${Math.round(sysInfo.cpu).toString().padStart(3)}%` : null;
-    const memStr = sysInfo.memPct != null ? `Mem: ${Math.round(sysInfo.memPct).toString().padStart(3)}%` : null;
-    const loadStr = sysInfo.load1 != null ? `Ld: ${sysInfo.load1.toFixed(2).padStart(6)}` : null;
+    const cpuStr = sysInfo.cpu != null ? `CPU: ${Math.round(sysInfo.cpu).toString().padStart(3)}%` : "CPU:  --% ";
+    const memStr = sysInfo.memPct != null ? `Mem: ${Math.round(sysInfo.memPct).toString().padStart(3)}%` : "Mem:  --% ";
+    const loadStr = sysInfo.load1 != null ? `Ld: ${sysInfo.load1.toFixed(2).padStart(6)}` : "Ld:    -- ";
 
     const cpuColor = getMetricColor(sysInfo.cpu, 70, 90);
     const memColor = getMetricColor(sysInfo.memPct, 70, 90);
@@ -78,27 +77,17 @@ const TabBarStats = memo(() => {
             {" \u00B7 "}
             {utcTime}
             {" \u00B7 "}
-            {cpuStr && (
-                <>
-                    <span className={`inline-block ${cpuColor}`} style={{ minWidth: "9ch" }}>
-                        {cpuStr}
-                    </span>
-                    {" \u00B7 "}
-                </>
-            )}
-            {memStr && (
-                <>
-                    <span className={`inline-block ${memColor}`} style={{ minWidth: "9ch" }}>
-                        {memStr}
-                    </span>
-                    {" \u00B7 "}
-                </>
-            )}
-            {loadStr && (
-                <span className={`inline-block ${loadColor}`} style={{ minWidth: "10ch" }}>
-                    {loadStr}
-                </span>
-            )}
+            <span className={`inline-block ${cpuColor}`} style={{ minWidth: "9ch" }}>
+                {cpuStr}
+            </span>
+            {" \u00B7 "}
+            <span className={`inline-block ${memColor}`} style={{ minWidth: "9ch" }}>
+                {memStr}
+            </span>
+            {" \u00B7 "}
+            <span className={`inline-block ${loadColor}`} style={{ minWidth: "10ch" }}>
+                {loadStr}
+            </span>
         </span>
     );
 });
