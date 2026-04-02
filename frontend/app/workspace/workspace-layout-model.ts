@@ -84,10 +84,10 @@ class WorkspaceLayoutModel {
         this.aiPanelWidth = null;
         this.vtabWidth = VTabBar_DefaultWidth;
         this.vtabVisible = false;
-        this.agentNotifyPanelVisible = true;
+        this.agentNotifyPanelVisible = false;
         this.agentNotifyPanelWidth = AgentNotifyPanel_DefaultWidth;
         this.panelVisibleAtom = jotai.atom(false);
-        this.agentNotifyPanelVisibleAtom = jotai.atom(true);
+        this.agentNotifyPanelVisibleAtom = jotai.atom(false);
         this.initializeFromMeta();
 
         this.handleWindowResize = this.handleWindowResize.bind(this);
