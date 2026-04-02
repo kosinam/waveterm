@@ -1149,6 +1149,7 @@ declare global {
         "cmd:jwt"?: boolean;
         "cmd:env"?: {[key: string]: string};
         "cmd:cwd"?: string;
+        "cmd:homedir"?: string;
         "cmd:initscript"?: string;
         "cmd:initscript.sh"?: string;
         "cmd:initscript.bash"?: string;

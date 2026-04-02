@@ -56,6 +56,7 @@ type MetaTSType struct {
 	// these can be nested under "[conn]"
 	CmdEnv            map[string]string `json:"cmd:env,omitempty"`
 	CmdCwd            string            `json:"cmd:cwd,omitempty"`
+	CmdHomedir        string            `json:"cmd:homedir,omitempty"`
 	CmdInitScript     string            `json:"cmd:initscript,omitempty"`
 	CmdInitScriptSh   string            `json:"cmd:initscript.sh,omitempty"`
 	CmdInitScriptBash string            `json:"cmd:initscript.bash,omitempty"`
