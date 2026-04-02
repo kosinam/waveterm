@@ -142,9 +142,22 @@ function isMeaningfulTypingKey(event: KeyboardEvent): boolean {
     return event.key === "Enter" || event.key === "Backspace" || event.key === "Delete";
 }
 
+function clearQuestionNotificationsForBlock(blockId: string): void {
+    const notifications = globalStore.get(agentNotificationsAtom);
+    const readIds = globalStore.get(agentReadIdsAtom);
+    for (const notification of notifications) {
+        if (readIds.has(notification.notifyid)) continue;
+        const notificationBlockId = notification.oref?.split(":")[1];
+        if (notificationBlockId !== blockId) continue;
+        if (notification.status !== "question" && notification.status !== "waiting") continue;
+        clearAgentNotification(notification.notifyid);
+    }
+}
+
 function markUnreadNotificationsReadForBlock(target: EventTarget | null): void {
     const targetBlockId = getEventBlockId(target);
     if (!targetBlockId) return;
+    clearQuestionNotificationsForBlock(targetBlockId);
     markUnreadNotificationsReadForBlockId(targetBlockId);
 }
 
@@ -160,6 +173,10 @@ export function markUnreadNotificationsReadForBlockId(
         if (readIds.has(notification.notifyid)) continue;
         const notificationBlockId = notification.oref?.split(":")[1];
         if (notificationBlockId !== targetBlockId) continue;
+        // Question and waiting notifications are cleared immediately on keystroke (see
+        // clearQuestionNotificationsForBlock); skip them here so they are not merely
+        // marked read by the Ctrl-w U navigation path.
+        if (notification.status === "question" || notification.status === "waiting") continue;
         const arrivedAt = notificationArrivalMs.get(notification.notifyid) ?? 0;
         if (!opts?.ignoreGracePeriod && now - arrivedAt < notificationKeystrokeGraceMs) continue;
         markAgentNotificationRead(notification.notifyid);
