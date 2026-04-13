@@ -112,6 +112,7 @@ export const AgentNotifyPanel = memo(() => {
         <div
             className="flex h-full flex-col overflow-hidden select-none"
             style={{ background: "rgba(0, 0, 0, 0.25)" }}
+            data-agentnotifypanel=""
         >
             {/* Header */}
             <div className="flex shrink-0 items-center justify-between px-2 py-1.5 border-b border-border/30">

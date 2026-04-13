@@ -247,6 +247,16 @@ const MacOSFirstClickHandler = () => {
             }
             return false;
         };
+        const isAgentNotifyPanelTarget = (target: EventTarget): boolean => {
+            let elem = target as HTMLElement;
+            while (elem != null) {
+                if (elem.dataset?.agentnotifypanel !== undefined) {
+                    return true;
+                }
+                elem = elem.parentElement;
+            }
+            return false;
+        };
         const handleMouseDown = (e: MouseEvent) => {
             const timeDiff = Date.now() - windowFocusTime;
             if (windowFocusTime != null && timeDiff < 50) {
@@ -264,6 +274,12 @@ const MacOSFirstClickHandler = () => {
                     setTimeout(() => {
                         console.log("macos first-click, focusing AI panel");
                         FocusManager.getInstance().setWaveAIFocused(true);
+                    }, 10);
+                } else if (isAgentNotifyPanelTarget(e.target)) {
+                    const target = e.target as HTMLElement;
+                    setTimeout(() => {
+                        console.log("macos first-click, re-firing click on agent notify panel");
+                        target.click();
                     }, 10);
                 }
                 console.log("macos first-click detected, canceled", timeDiff + "ms");
