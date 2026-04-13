@@ -1416,6 +1416,7 @@ declare global {
         "app:focusfollowscursor"?: string;
         "app:tabbar"?: string;
         "app:blockbordercolor"?: string;
+        "app:dimunfocusedblocks"?: number;
         "agent:clearreadafterms"?: number;
         "agent:shellnotificationthresholdms"?: number;
         "feature:waveappbuilder"?: boolean;

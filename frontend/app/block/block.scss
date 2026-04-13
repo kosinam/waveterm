@@ -65,6 +65,8 @@
     &.block-frame-default {
         position: relative;
         padding: 1px;
+        opacity: var(--unfocused-block-opacity, 1);
+        transition: opacity 0.15s ease;
 
         .block-frame-default-inner {
             background-color: var(--block-bg-color);

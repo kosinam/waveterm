@@ -6,6 +6,7 @@ import { BlockFrame_Header } from "@/app/block/blockframe-header";
 import { blockViewToIcon, getViewIconElem, useTabBackground } from "@/app/block/blockutil";
 import { ConnStatusOverlay } from "@/app/block/connstatusoverlay";
 import { ChangeConnectionBlockModal } from "@/app/modals/conntypeahead";
+import { FocusManager } from "@/app/store/focusManager";
 import { getBlockComponentModel, globalStore, useBlockAtom } from "@/app/store/global";
 import { useTabModel } from "@/app/store/tab-model";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
@@ -115,6 +116,13 @@ const BlockFrame_Default_Component = (props: BlockFrameProps) => {
         waveEnv.getSettingsKeyAtom("window:magnifiedblockopacity")
     );
     const magnifiedBlockOpacity = jotai.useAtomValue(magnifiedBlockOpacityAtom);
+    const [dimUnfocusedBlocksAtom] = React.useState(() =>
+        waveEnv.getSettingsKeyAtom("app:dimunfocusedblocks")
+    );
+    const dimUnfocusedBlocks = jotai.useAtomValue(dimUnfocusedBlocksAtom);
+    const focusType = jotai.useAtomValue(FocusManager.getInstance().focusType);
+    const unfocusedBlockOpacity =
+        dimUnfocusedBlocks != null && focusType === "node" && !isFocused ? dimUnfocusedBlocks : undefined;
     const connBtnRef = React.useRef<HTMLDivElement>(null);
     const connName = jotai.useAtomValue(waveEnv.getBlockMetaKeyAtom(nodeModel.blockId, "connection"));
     const iconColor = jotai.useAtomValue(waveEnv.getBlockMetaKeyAtom(nodeModel.blockId, "icon:color"));
@@ -184,6 +192,7 @@ const BlockFrame_Default_Component = (props: BlockFrameProps) => {
                 {
                     "--magnified-block-opacity": magnifiedBlockOpacity,
                     "--magnified-block-blur": `${magnifiedBlockBlur}px`,
+                    "--unfocused-block-opacity": unfocusedBlockOpacity,
                 } as React.CSSProperties
             }
             inert={preview || undefined}
