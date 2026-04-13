@@ -177,7 +177,6 @@ class WorkspaceLayoutModel {
             const savedVisible = globalStore.get(this.getPanelOpenAtom());
             const savedAIWidth = globalStore.get(this.getPanelWidthAtom());
             const savedVTabWidth = globalStore.get(this.getVTabBarWidthAtom());
-            const savedAgentNotifyVisible = globalStore.get(this.getAgentNotifyPanelOpenAtom());
             const savedAgentNotifyWidth = globalStore.get(this.getAgentNotifyPanelWidthAtom());
             if (savedVisible != null) {
                 this.aiPanelVisible = savedVisible;
@@ -189,7 +188,9 @@ class WorkspaceLayoutModel {
             if (savedVTabWidth != null && savedVTabWidth > 0) {
                 this.vtabWidth = savedVTabWidth;
             }
-            if (savedAgentNotifyVisible != null) {
+            const savedAgentNotifyVisibleStr = localStorage.getItem("agentnotifypanelopen");
+            if (savedAgentNotifyVisibleStr != null) {
+                const savedAgentNotifyVisible = savedAgentNotifyVisibleStr === "true";
                 this.agentNotifyPanelVisible = savedAgentNotifyVisible;
                 globalStore.set(this.agentNotifyPanelVisibleAtom, savedAgentNotifyVisible);
             }
@@ -507,14 +508,7 @@ class WorkspaceLayoutModel {
     setAgentNotifyPanelVisible(visible: boolean): void {
         this.agentNotifyPanelVisible = visible;
         globalStore.set(this.agentNotifyPanelVisibleAtom, visible);
-        try {
-            RpcApi.SetMetaCommand(TabRpcClient, {
-                oref: WOS.makeORef("workspace", this.getWorkspaceId()),
-                meta: { "layout:agentnotifypanelopen": visible },
-            });
-        } catch (e) {
-            console.warn("Failed to persist agent notify panel visibility:", e);
-        }
+        localStorage.setItem("agentnotifypanelopen", String(visible));
         this.enableTransitions(250);
         this.syncPanelCollapse();
         this.commitLayouts(window.innerWidth);
