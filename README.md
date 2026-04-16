@@ -139,7 +139,7 @@ Add `"waveterm"` to the `plugins` array in `~/.config/opencode/config.json`:
 
 ```json
 {
-  "plugins": ["waveterm"]
+  "plugin": ["waveterm"]
 }
 ```
 
