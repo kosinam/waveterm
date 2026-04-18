@@ -1408,7 +1408,6 @@ declare global {
         "app:ctrlvpaste"?: boolean;
         "app:confirmquit"?: boolean;
         "app:hideaibutton"?: boolean;
-        "app:fullscreensysstats"?: boolean;
         "app:hidewidgetpanel"?: boolean;
         "app:chordprefix"?: string;
         "app:disablectrlshiftarrows"?: boolean;

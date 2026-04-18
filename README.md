@@ -262,10 +262,6 @@ The focused block border and resize handles now use a dedicated `--block-border-
 
 ## Miscelaneous enhancements
 
-- CPU usage, memory usage, and 1-minute load average are shown in the right side of the tab bar in fullscreen mode. Enabled by default; disable with:
-  ```json
-  { "app:fullscreensysstats": false }
-  ```
 - Opening a new browser block automatically focuses the URL input field so you can type an address immediately without an extra click.
 - A new `app:hidewidgetpanel` setting (also toggleable from the tab bar context menu or via Ctrl-w w) lets you permanently hide the right-side widget panel:
   ```json

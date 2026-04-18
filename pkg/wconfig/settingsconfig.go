@@ -65,7 +65,6 @@ type SettingsType struct {
 	AppCtrlVPaste                 *bool  `json:"app:ctrlvpaste,omitempty"`
 	AppConfirmQuit                *bool  `json:"app:confirmquit,omitempty"`
 	AppHideAiButton               bool   `json:"app:hideaibutton,omitempty"`
-	AppFullscreenShowSysStats     *bool  `json:"app:fullscreensysstats,omitempty"`
 	AppHideWidgetPanel            bool   `json:"app:hidewidgetpanel,omitempty"`
 	AppChordPrefix                string `json:"app:chordprefix,omitempty"`
 	AppDisableCtrlShiftArrows     bool   `json:"app:disablectrlshiftarrows,omitempty"`

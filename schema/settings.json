@@ -29,9 +29,6 @@
         "app:hideaibutton": {
           "type": "boolean"
         },
-        "app:fullscreensysstats": {
-          "type": "boolean"
-        },
         "app:hidewidgetpanel": {
           "type": "boolean"
         },

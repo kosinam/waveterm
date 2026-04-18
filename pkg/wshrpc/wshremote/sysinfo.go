@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/shirou/gopsutil/v4/cpu"
-	"github.com/shirou/gopsutil/v4/load"
 	"github.com/shirou/gopsutil/v4/mem"
 	"github.com/wavetermdev/waveterm/pkg/wps"
 	"github.com/wavetermdev/waveterm/pkg/wshrpc"
@@ -47,22 +46,11 @@ func getMemData(values map[string]float64) {
 	values["mem:free"] = float64(memData.Free) / BYTES_PER_GB
 }
 
-func getLoadData(values map[string]float64) {
-	loadData, err := load.Avg()
-	if err != nil {
-		return
-	}
-	values["load:1"] = loadData.Load1
-	values["load:5"] = loadData.Load5
-	values["load:15"] = loadData.Load15
-}
-
 func generateSingleServerData(client *wshutil.WshRpc, connName string) {
 	now := time.Now()
 	values := make(map[string]float64)
 	getCpuData(values)
 	getMemData(values)
-	getLoadData(values)
 	tsData := wshrpc.TimeSeriesData{Ts: now.UnixMilli(), Values: values}
 	event := wps.WaveEvent{
 		Event:   wps.Event_SysInfo,
