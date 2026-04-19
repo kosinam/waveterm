@@ -8,6 +8,7 @@ import { Rectangle, shell, WebContentsView } from "electron";
 import { createNewWaveWindow, getWaveWindowById } from "emain/emain-window";
 import path from "path";
 import { configureAuthKeyRequestInjection } from "./authkey";
+import { configureWebviewResponseHeaderStripping } from "./emain-webview-headers";
 import { setWasActive } from "./emain-activity";
 import { getElectronAppBasePath, isDevVite, unamePlatform } from "./emain-platform";
 import {
@@ -20,6 +21,17 @@ import {
     shNavHandler,
 } from "./emain-util";
 import { ElectronWshClient } from "./emain-wsh";
+
+let webviewKeys: string[] = [];
+let webviewChordTriggerKeys: string[] = [];
+
+export function setWebviewKeys(keys: string[]) {
+    webviewKeys = keys;
+}
+
+export function setWebviewChordTriggerKeys(keys: string[]) {
+    webviewChordTriggerKeys = keys;
+}
 
 function handleWindowsMenuAccelerators(
     waveEvent: WaveKeyboardEvent,
@@ -322,6 +334,30 @@ export async function getOrCreateWebViewForTab(waveWindowId: string, tabId: stri
             tabView.webContents.send("webview-new-window", wc.id, details);
             return { action: "deny" };
         });
+        wc.on("before-input-event", (e, input) => {
+            const waveEvent = adaptFromElectronKeyEvent(input);
+            handleCtrlShiftState(tabView.webContents, waveEvent);
+            if (input.type != "keyDown") return;
+            if (tabView.keyboardChordMode) {
+                const modifierKeys = new Set(["Shift", "Control", "Alt", "Meta", "CapsLock", "NumLock", "ScrollLock"]);
+                if (!modifierKeys.has(waveEvent.key)) {
+                    e.preventDefault();
+                    tabView.setKeyboardChordMode(false);
+                    tabView.webContents.send("reinject-key", waveEvent);
+                }
+                return;
+            }
+            for (const keyDesc of webviewKeys) {
+                if (checkKeyPressed(waveEvent, keyDesc)) {
+                    e.preventDefault();
+                    if (webviewChordTriggerKeys.some((t) => checkKeyPressed(waveEvent, t))) {
+                        tabView.setKeyboardChordMode(true);
+                    }
+                    tabView.webContents.send("reinject-key", waveEvent);
+                    return;
+                }
+            }
+        });
     });
     tabView.webContents.on("before-input-event", (e, input) => {
         const waveEvent = adaptFromElectronKeyEvent(input);
@@ -354,6 +390,7 @@ export async function getOrCreateWebViewForTab(waveWindowId: string, tabId: stri
         handleCtrlShiftFocus(tabView.webContents, false);
     });
     configureAuthKeyRequestInjection(tabView.webContents.session);
+    configureWebviewResponseHeaderStripping(tabView.webContents.session);
     return [tabView, false];
 }
 
