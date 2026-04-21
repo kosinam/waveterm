@@ -72,6 +72,16 @@ function TileLayoutComponent({ tabAtom, contents, getCursorPoint }: TileLayoutPr
         setActiveDrag(activeTileDrag);
     }, [activeDrag, dragItemType]);
 
+    useEffect(() => {
+        const clearDrag = () => setActiveDrag(false);
+        window.addEventListener("focus", clearDrag);
+        window.addEventListener("blur", clearDrag);
+        return () => {
+            window.removeEventListener("focus", clearDrag);
+            window.removeEventListener("blur", clearDrag);
+        };
+    }, []);
+
     const checkForCursorBounds = useCallback(
         debounce(100, (dragClientOffset: XYCoord) => {
             const cursorPoint = dragClientOffset ?? getCursorPoint?.();

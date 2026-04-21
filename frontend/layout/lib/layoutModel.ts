@@ -1228,7 +1228,10 @@ export class LayoutModel {
      * @param nodeId The id of the node that is being focused.
      */
     focusNode(nodeId: string) {
-        if (this.focusedNodeId === nodeId) return;
+        if (this.focusedNodeId === nodeId) {
+            FocusManager.getInstance().requestNodeFocus();
+            return;
+        }
         let layoutNode = findNode(this.treeState?.rootNode, nodeId);
         if (!layoutNode) {
             const ephemeralNode = this.getter(this.ephemeralNode);

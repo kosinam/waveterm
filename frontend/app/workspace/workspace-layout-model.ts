@@ -25,7 +25,7 @@ const VTabBar_DefaultWidth = 220;
 const VTabBar_MinWidth = 110;
 const VTabBar_MaxWidth = 280;
 
-const AgentNotifyPanel_DefaultWidth = 325;
+const AgentNotifyPanel_DefaultWidth = 276;
 const AgentNotifyPanel_MinWidth = 200;
 const AgentNotifyPanel_MaxWidth = 525;
 
