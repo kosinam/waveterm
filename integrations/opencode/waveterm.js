@@ -6,10 +6,10 @@
 // Installation
 // ------------
 // 1. Copy (or symlink) this file to ~/.config/opencode/plugins/waveterm.js
-// 2. In ~/.config/opencode/config.json, add the plugin to the plugins array:
+// 2. In ~/.config/opencode/config.json, add the plugin path to the plugin array:
 //
 //      {
-//        "plugins": ["waveterm"]
+//        "plugin": ["./plugins/waveterm.js"]
 //      }
 //
 // Requires: wsh in PATH (installed automatically with WaveTerm).

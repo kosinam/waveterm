@@ -135,15 +135,15 @@ ln -s "$(pwd)/integrations/opencode/waveterm.js" ~/.config/opencode/plugins/wave
 
 **Step 2 — register the plugin in opencode:**
 
-Add `"waveterm"` to the `plugins` array in `~/.config/opencode/config.json`:
+Add the plugin path to the `plugin` array in `~/.config/opencode/config.json`:
 
 ```json
 {
-  "plugin": ["waveterm"]
+  "plugin": ["./plugins/waveterm.js"]
 }
 ```
 
-opencode loads plugins by filename stem from `~/.config/opencode/plugins/`, so the name `"waveterm"` maps to `waveterm.js`.
+The path is relative to `~/.config/opencode/`, so `./plugins/waveterm.js` points to the file copied in Step 1.
 
 The plugin sends a `question` notification (with a beep) when opencode asks for input, an `error` notification when a tool fails or the session errors, and a `completion` notification when the session goes idle. All notifications for a given project collapse onto a single Agent panel entry keyed by worktree path.
 
