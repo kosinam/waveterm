@@ -48,6 +48,8 @@ contextBridge.exposeInMainWorld("api", {
     registerWebviewChordTriggerKeys: (keys) => ipcRenderer.send("register-webview-chord-trigger-keys", keys),
     onControlShiftStateUpdate: (callback) =>
         ipcRenderer.on("control-shift-state-update", (_event, state) => callback(state)),
+    onWavetermWindowFocusChange: (callback) =>
+        ipcRenderer.on("wave-window-focus", (_event, focused) => callback(focused)),
     createWorkspace: () => ipcRenderer.send("create-workspace"),
     switchWorkspace: (workspaceId) => ipcRenderer.send("switch-workspace", workspaceId),
     deleteWorkspace: (workspaceId) => ipcRenderer.send("delete-workspace", workspaceId),

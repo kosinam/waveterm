@@ -118,6 +118,17 @@ function initGlobalAtoms(initOpts: GlobalInitOptions) {
         });
     }
 
+    // True when the WaveTerm OS window is the active/frontmost app.
+    // Set via BrowserWindow focus/blur IPC from the main process, which fires
+    // only on OS-level window activation — NOT when a webview inside gains focus.
+    // This is the reliable source of truth for "is WaveTerm the active OS window?"
+    const wavetermWindowActiveAtom = atom(true) as PrimitiveAtom<boolean>;
+    if (globalThis.window != null) {
+        getApi().onWavetermWindowFocusChange((focused: boolean) => {
+            globalStore.set(wavetermWindowActiveAtom, focused);
+        });
+    }
+
     const modalOpen = atom(false);
     const allConnStatusAtom = atom<ConnStatus[]>((get) => {
         const connStatusMap = get(ConnStatusMapAtom);
@@ -145,6 +156,7 @@ function initGlobalAtoms(initOpts: GlobalInitOptions) {
         updaterStatusAtom,
         prefersReducedMotionAtom,
         documentHasFocus: documentHasFocusAtom,
+        wavetermWindowActive: wavetermWindowActiveAtom,
         modalOpen,
         allConnStatus: allConnStatusAtom,
         reinitVersion,

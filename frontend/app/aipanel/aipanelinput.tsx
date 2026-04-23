@@ -4,6 +4,7 @@
 import { formatFileSizeError, isAcceptableFile, validateFileSize } from "@/app/aipanel/ai-utils";
 import { waveAIHasFocusWithin } from "@/app/aipanel/waveai-focus-utils";
 import { type WaveAIModel } from "@/app/aipanel/waveai-model";
+import { atoms } from "@/app/store/global";
 import { Tooltip } from "@/element/tooltip";
 import { cn } from "@/util/util";
 import { useAtom, useAtomValue } from "jotai";
@@ -23,7 +24,9 @@ export interface AIPanelInputRef {
 
 export const AIPanelInput = memo(({ onSubmit, status, model }: AIPanelInputProps) => {
     const [input, setInput] = useAtom(model.inputAtom);
-    const isFocused = useAtomValue(model.isWaveAIFocusedAtom);
+    const waveAIFocused = useAtomValue(model.isWaveAIFocusedAtom);
+    const wavetermWindowActive = useAtomValue(atoms.wavetermWindowActive);
+    const isFocused = waveAIFocused && wavetermWindowActive;
     const isChatEmpty = useAtomValue(model.isChatEmptyAtom);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);

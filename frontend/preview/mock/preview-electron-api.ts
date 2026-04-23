@@ -35,6 +35,7 @@ const previewElectronApi: ElectronApi = {
     setWebviewFocus: (_focusedId: number) => {},
     registerGlobalWebviewKeys: (_keys: string[]) => {},
     onControlShiftStateUpdate: (_callback: (state: boolean) => void) => {},
+    onWavetermWindowFocusChange: (_callback: (focused: boolean) => void) => {},
     createWorkspace: () => {},
     switchWorkspace: (_workspaceId: string) => {},
     deleteWorkspace: (_workspaceId: string) => {},

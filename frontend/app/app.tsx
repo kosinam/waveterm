@@ -193,26 +193,34 @@ function appSelectionChange(e: Event) {
 }
 
 function AppFocusHandler() {
-    return null;
+    const wavetermWindowActive = useAtomValue(atoms.wavetermWindowActive);
+    const prevActiveRef = useRef(true); // assume active on mount to avoid spurious refocus
+    const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-    // for debugging
     useEffect(() => {
-        document.addEventListener("focusin", appFocusIn);
-        document.addEventListener("focusout", appFocusOut);
-        document.addEventListener("selectionchange", appSelectionChange);
-        const ivId = setInterval(() => {
-            const activeElement = document.activeElement;
-            if (activeElement instanceof HTMLElement) {
-                focusLog("activeElement", getElemAsStr(activeElement));
-            }
-        }, 2000);
+        const wasActive = prevActiveRef.current;
+        prevActiveRef.current = wavetermWindowActive;
+
+        if (timerRef.current != null) {
+            clearTimeout(timerRef.current);
+            timerRef.current = null;
+        }
+        if (wavetermWindowActive && !wasActive) {
+            // Window just became the active OS window — restore keyboard focus
+            timerRef.current = setTimeout(() => {
+                timerRef.current = null;
+                FocusManager.getInstance().refocusNode();
+            }, 50);
+        }
+
         return () => {
-            document.removeEventListener("focusin", appFocusIn);
-            document.removeEventListener("focusout", appFocusOut);
-            document.removeEventListener("selectionchange", appSelectionChange);
-            clearInterval(ivId);
+            if (timerRef.current != null) {
+                clearTimeout(timerRef.current);
+                timerRef.current = null;
+            }
         };
-    });
+    }, [wavetermWindowActive]);
+
     return null;
 }
 
@@ -224,7 +232,13 @@ const MacOSFirstClickHandler = () => {
         let windowFocusTime: number = null;
         let cancelNextClick = false;
         const handleWindowFocus = (e: FocusEvent) => {
-            windowFocusTime = Date.now();
+            // Only cancel the first click when the OS window itself is being activated
+            // from the background. When focus simply returns from a webview to the DOM
+            // within the same already-active window, wavetermWindowActive stays true and
+            // we must NOT cancel the click (e.g. the ✕ close button).
+            if (!globalStore.get(atoms.wavetermWindowActive)) {
+                windowFocusTime = Date.now();
+            }
         };
         const getBlockIdFromTarget = (target: EventTarget): string => {
             let elem = target as HTMLElement;

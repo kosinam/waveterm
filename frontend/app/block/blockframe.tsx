@@ -7,7 +7,7 @@ import { blockViewToIcon, getViewIconElem, useTabBackground } from "@/app/block/
 import { ConnStatusOverlay } from "@/app/block/connstatusoverlay";
 import { ChangeConnectionBlockModal } from "@/app/modals/conntypeahead";
 import { FocusManager } from "@/app/store/focusManager";
-import { getBlockComponentModel, globalStore, useBlockAtom } from "@/app/store/global";
+import { atoms, getBlockComponentModel, globalStore, useBlockAtom } from "@/app/store/global";
 import { useTabModel } from "@/app/store/tab-model";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
 import { useWaveEnv } from "@/app/waveenv/waveenv";
@@ -27,7 +27,9 @@ import { BlockFrameProps } from "./blocktypes";
 const BlockMask = React.memo(({ nodeModel }: { nodeModel: NodeModel }) => {
     const waveEnv = useWaveEnv<BlockEnv>();
     const tabModel = useTabModel();
-    const isFocused = jotai.useAtomValue(nodeModel.isFocused);
+    const nodeIsFocused = jotai.useAtomValue(nodeModel.isFocused);
+    const wavetermWindowActive = jotai.useAtomValue(atoms.wavetermWindowActive);
+    const isFocused = nodeIsFocused && wavetermWindowActive;
     const isEphemeral = jotai.useAtomValue(nodeModel.isEphemeral);
     const blockNum = jotai.useAtomValue(nodeModel.blockNum);
     const isLayoutMode = jotai.useAtomValue(waveEnv.atoms.controlShiftDelayAtom);
@@ -96,7 +98,9 @@ const BlockMask = React.memo(({ nodeModel }: { nodeModel: NodeModel }) => {
 const BlockFrame_Default_Component = (props: BlockFrameProps) => {
     const waveEnv = useWaveEnv<BlockEnv>();
     const { nodeModel, viewModel, blockModel, preview, numBlocksInTab, children } = props;
-    const isFocused = jotai.useAtomValue(nodeModel.isFocused);
+    const nodeIsFocused = jotai.useAtomValue(nodeModel.isFocused);
+    const wavetermWindowActive = jotai.useAtomValue(atoms.wavetermWindowActive);
+    const isFocused = nodeIsFocused && wavetermWindowActive;
     const aiPanelVisible = jotai.useAtomValue(WorkspaceLayoutModel.getInstance().panelVisibleAtom);
     const metaView = jotai.useAtomValue(waveEnv.getBlockMetaKeyAtom(nodeModel.blockId, "view"));
     const viewIconUnion = util.useAtomValueSafe(viewModel?.viewIcon) ?? blockViewToIcon(metaView);

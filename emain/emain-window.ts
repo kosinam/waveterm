@@ -280,9 +280,11 @@ export class WaveBrowserWindow extends BaseWindow {
             setWasInFg(true);
             setWasActive(true);
             setTimeout(() => globalEvents.emit("windows-updated"), 50);
+            this.activeTabView?.webContents.send("wave-window-focus", true);
         });
         this.on("blur", () => {
             setTimeout(() => globalEvents.emit("windows-updated"), 50);
+            this.activeTabView?.webContents.send("wave-window-focus", false);
         });
         this.on("close", (e) => {
             if (this.canClose) {

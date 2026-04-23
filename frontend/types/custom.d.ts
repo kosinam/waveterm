@@ -24,6 +24,7 @@ declare global {
         controlShiftDelayAtom: jotai.PrimitiveAtom<boolean>;
         prefersReducedMotionAtom: jotai.Atom<boolean>;
         documentHasFocus: jotai.PrimitiveAtom<boolean>;
+        wavetermWindowActive: jotai.PrimitiveAtom<boolean>;
         updaterStatusAtom: jotai.PrimitiveAtom<UpdaterStatus>;
         modalOpen: jotai.PrimitiveAtom<boolean>;
         allConnStatus: jotai.Atom<ConnStatus[]>;
@@ -112,6 +113,7 @@ declare global {
         registerGlobalWebviewKeys: (keys: string[]) => void; // register-global-webview-keys
         registerWebviewChordTriggerKeys: (keys: string[]) => void; // register-webview-chord-trigger-keys
         onControlShiftStateUpdate: (callback: (state: boolean) => void) => void; // control-shift-state-update
+        onWavetermWindowFocusChange: (callback: (focused: boolean) => void) => void; // wave-window-focus
         createWorkspace: () => void; // create-workspace
         switchWorkspace: (workspaceId: string) => void; // switch-workspace
         deleteWorkspace: (workspaceId: string) => void; // delete-workspace
