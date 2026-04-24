@@ -469,6 +469,10 @@ export class WaveBrowserWindow extends BaseWindow {
             this.finalizePositioning();
         }
 
+        // Sync current OS window focus state to the newly activated tab view so
+        // wavetermWindowActive is correct regardless of when the tab was loaded.
+        tabView.webContents.send("wave-window-focus", this.isFocused());
+
         // something is causing the new tab to lose focus so it requires manual refocusing
         tabView.webContents.focus();
         setTimeout(() => {

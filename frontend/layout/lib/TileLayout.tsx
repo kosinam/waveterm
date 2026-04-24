@@ -76,9 +76,11 @@ function TileLayoutComponent({ tabAtom, contents, getCursorPoint }: TileLayoutPr
         const clearDrag = () => setActiveDrag(false);
         window.addEventListener("focus", clearDrag);
         window.addEventListener("blur", clearDrag);
+        window.addEventListener("dragend", clearDrag);
         return () => {
             window.removeEventListener("focus", clearDrag);
             window.removeEventListener("blur", clearDrag);
+            window.removeEventListener("dragend", clearDrag);
         };
     }, []);
 
