@@ -14,6 +14,7 @@ export type FocusLocation = {
     tabId: string | null;
     focusType: FocusStrType;
     blockId?: string | null;
+    magnifiedNodeId?: string | null;
 };
 
 function getStorage(): Storage | null {
@@ -148,7 +149,8 @@ export function getCurrentFocusLocation(): FocusLocation | null {
     if (blockId == null) {
         return null;
     }
-    return { workspaceId, tabId, focusType: "node", blockId };
+    const magnifiedNodeId = layoutModel.magnifiedNodeId ?? null;
+    return { workspaceId, tabId, focusType: "node", blockId, magnifiedNodeId };
 }
 
 export function recordFocusLocation(location: FocusLocation | null): void {
@@ -184,6 +186,12 @@ function focusLocationInCurrentRenderer(location: FocusLocation): boolean {
         return false;
     }
     refocusNode(location.blockId);
+    if (location.magnifiedNodeId) {
+        const layoutModel = getLayoutModelForStaticTab();
+        if (layoutModel && layoutModel.magnifiedNodeId !== location.magnifiedNodeId) {
+            layoutModel.magnifyNodeToggle(location.magnifiedNodeId);
+        }
+    }
     return true;
 }
 
@@ -207,6 +215,11 @@ export function applyPendingFocusNavigationForCurrentTab(): boolean {
 export async function navigateToFocusLocation(location: FocusLocation | null): Promise<boolean> {
     if (location == null || location.tabId == null) {
         return false;
+    }
+
+    const currentLayoutModel = getLayoutModelForStaticTab();
+    if (currentLayoutModel?.magnifiedNodeId) {
+        currentLayoutModel.magnifyNodeToggle(currentLayoutModel.magnifiedNodeId);
     }
 
     const currentWorkspaceId = globalStore.get(atoms.workspaceId);

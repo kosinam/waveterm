@@ -1067,8 +1067,8 @@ function registerGlobalKeys() {
         model.setAgentNotifyPanelVisible(!model.getAgentNotifyPanelVisible());
         return true;
     });
-    // custom: U (Shift-U) — jump to the oldest unread agent notification first
-    ctrlBKeys.set("U", () => {
+    // custom: u — jump to the oldest unread agent notification first
+    ctrlBKeys.set("u", () => {
         const notifications = globalStore.get(agentNotificationsAtom);
         const readIds = globalStore.get(agentReadIdsAtom);
         const unreadNotifications = notifications.filter((n) => !readIds.has(n.notifyid));

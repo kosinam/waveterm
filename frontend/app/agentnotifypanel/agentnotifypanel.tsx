@@ -4,6 +4,7 @@
 import { agentNotificationsAtom, agentReadIdsAtom, clearAllAgentNotifications, markAgentNotificationRead } from "@/app/store/agentnotify";
 import { recordCurrentFocusLocation, setPendingFocusNavigation } from "@/app/store/focus-history";
 import { atoms } from "@/app/store/global";
+import { getLayoutModelForStaticTab } from "@/layout/index";
 import { globalStore } from "@/app/store/jotaiStore";
 import { RpcApi } from "@/app/store/wshclientapi";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
@@ -34,6 +35,10 @@ function getStatusIcon(status: string): { icon: string; color: string } {
 async function navigateToNotification(notification: AgentNotification, opts?: NavigateToNotificationOpts) {
     if (!notification) return;
     recordCurrentFocusLocation();
+    const layoutModel = getLayoutModelForStaticTab();
+    if (layoutModel?.magnifiedNodeId) {
+        layoutModel.magnifyNodeToggle(layoutModel.magnifiedNodeId);
+    }
     if (opts?.markRead ?? true) {
         markAgentNotificationRead(notification.notifyid);
     }
