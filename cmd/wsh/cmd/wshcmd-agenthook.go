@@ -357,6 +357,45 @@ func normalizeNotificationMessage(s string) string {
 	return truncate(strings.Join(strings.Fields(strings.TrimSpace(s)), " "), 300)
 }
 
+// trimToFirstSentence cuts s at the first sentence-ending punctuation (a period
+// followed by whitespace or end-of-string) or the first newline, but only if
+// the resulting prefix has at least minWords words. Otherwise it scans past
+// the boundary and tries the next one. Returns the original string if no
+// suitable boundary is found.
+func trimToFirstSentence(s string) string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return s
+	}
+	const minWords = 7
+	runes := []rune(s)
+	for i := 0; i < len(runes); i++ {
+		c := runes[i]
+		isEnd := false
+		switch {
+		case c == '\n':
+			isEnd = true
+		case c == '.':
+			if i+1 == len(runes) {
+				isEnd = true
+			} else {
+				next := runes[i+1]
+				if next == ' ' || next == '\t' || next == '\n' || next == '\r' {
+					isEnd = true
+				}
+			}
+		}
+		if !isEnd {
+			continue
+		}
+		candidate := strings.TrimSpace(string(runes[:i+1]))
+		if len(strings.Fields(candidate)) >= minWords {
+			return candidate
+		}
+	}
+	return s
+}
+
 func transcriptRole(entry map[string]any) string {
 	for _, key := range []string{"role", "type"} {
 		if v, ok := entry[key].(string); ok {
@@ -586,6 +625,7 @@ func sendClaudeHookNotificationWithTopic(message, cwd, status, notifyId, lifecyc
 	if message == "" {
 		message = "done"
 	}
+	message = trimToFirstSentence(message)
 	message = normalizeNotificationMessage(message)
 
 	workDir := cwd
@@ -727,8 +767,11 @@ func agentHookClaudeSessionStartRun(cmd *cobra.Command, args []string) (rtnErr e
 	}
 
 	switch hookInput.Source {
-	case "startup", "clear":
+	case "startup":
 		clearFrameTextForBlock()
+	case "clear":
+		clearFrameTextForBlock()
+		_ = sendClaudeHookNotificationWithTopic("Cleared", cwd, "info", "", "", "", false)
 	case "resume":
 		setSessionTopicForBlock(cwd, extractClaudeSessionName(transcriptPath))
 	}
