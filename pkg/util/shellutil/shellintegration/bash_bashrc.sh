@@ -22,6 +22,16 @@ elif [ -f ~/.profile ]; then
     . ~/.profile
 fi
 
+# Source ~/.bashrc for interactive setup (aliases, PS1, functions).
+# Mirrors the zsh integration's `source ~/.zshrc`. The login-shell profile
+# chain above does not source .bashrc on its own unless the user's
+# .bash_profile/.profile chains into it.
+if [ -f ~/.bashrc ] && [ -z "${_WAVETERM_BASHRC_SOURCED:-}" ]; then
+    _WAVETERM_BASHRC_SOURCED=1
+    . ~/.bashrc
+fi
+unset _WAVETERM_BASHRC_SOURCED
+
 if [[ ":$PATH:" != *":$WAVETERM_WSHBINDIR:"* ]]; then
     export PATH="$WAVETERM_WSHBINDIR:$PATH"
 fi

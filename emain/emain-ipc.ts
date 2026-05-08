@@ -20,6 +20,7 @@ import {
     setWasActive,
 } from "./emain-activity";
 import { createBuilderWindow, getAllBuilderWindows, getBuilderWindowByWebContentsId } from "./emain-builder";
+import { log } from "./emain-log";
 import { callWithOriginalXdgCurrentDesktopAsync, unamePlatform } from "./emain-platform";
 import { getWaveTabViewByWebContentsId, setWebviewChordTriggerKeys, setWebviewKeys } from "./emain-tabview";
 import { handleCtrlShiftState } from "./emain-util";
@@ -398,7 +399,7 @@ export function initIpcHandlers() {
     });
 
     electron.ipcMain.on("fe-log", (event, logStr: string) => {
-        console.log("fe-log", logStr);
+        log("fe-log", logStr);
     });
 
     electron.ipcMain.on(

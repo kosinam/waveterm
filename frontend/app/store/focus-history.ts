@@ -204,9 +204,12 @@ export function applyPendingFocusNavigationForCurrentTab(): boolean {
     if (pendingLocation.tabId !== currentTabId) {
         return false;
     }
+    // Clear immediately — consuming the pending navigation once is enough.
+    // Waiting for current==pending to clear caused an infinite loop when a webview
+    // fires OS-level focus events that continuously override the navigation target.
+    clearPendingFocusNavigation();
     const currentLocation = getCurrentFocusLocation();
     if (isSameFocusLocation(currentLocation, pendingLocation)) {
-        clearPendingFocusNavigation();
         return false;
     }
     return focusLocationInCurrentRenderer(pendingLocation);

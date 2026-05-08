@@ -14,7 +14,7 @@ import { RpcApi } from "@/app/store/wshclientapi";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
 import type { TermViewModel } from "@/app/view/term/term-model";
 import { atoms, getOverrideConfigAtom, getSettingsPrefixAtom, WOS } from "@/store/global";
-import { fireAndForget, useAtomValueSafe } from "@/util/util";
+import { fireAndForget, isLocalConnName, useAtomValueSafe } from "@/util/util";
 import { computeBgStyleFromMeta } from "@/util/waveutil";
 import { ISearchOptions } from "@xterm/addon-search";
 import clsx from "clsx";
@@ -66,6 +66,28 @@ const TermResyncHandler = React.memo(({ blockId, model }: TerminalViewProps) => 
 
     return null;
 });
+
+const TermConnThemeHandler = React.memo(({ model }: TerminalViewProps) => {
+    const connStatus = jotai.useAtomValue(model.connStatus);
+    const [lastConnName, setLastConnName] = React.useState<string | undefined>(connStatus?.connection);
+
+    React.useEffect(() => {
+        const curConnName = connStatus?.connection;
+        if (curConnName === lastConnName) {
+            return;
+        }
+        setLastConnName(curConnName);
+        if (curConnName && !isLocalConnName(curConnName)) {
+            model.setTerminalTheme("warmyellow");
+        } else {
+            model.setTerminalTheme(null);
+        }
+    }, [connStatus?.connection]);
+
+    return null;
+});
+
+TermConnThemeHandler.displayName = "TermConnThemeHandler";
 
 const TermVDomToolbarNode = ({ vdomBlockId, blockId, model }: TerminalViewProps & { vdomBlockId: string }) => {
     React.useEffect(() => {
@@ -388,6 +410,7 @@ const TerminalView = ({ blockId, model }: ViewComponentProps<TermViewModel>) => 
         <div className={clsx("view-term", "term-mode-" + termMode)} ref={viewRef} onContextMenu={handleContextMenu}>
             {termBg && <div key="term-bg" className="absolute inset-0 z-0 pointer-events-none" style={termBg} />}
             <TermResyncHandler blockId={blockId} model={model} />
+            <TermConnThemeHandler blockId={blockId} model={model} />
             <TermThemeUpdater blockId={blockId} model={model} termRef={model.termRef} />
             <TermStickers config={stickerConfig} />
             <TermToolbarVDomNode key="vdom-toolbar" blockId={blockId} model={model} />
