@@ -16,7 +16,7 @@ import React, {
     useRef,
     useState,
 } from "react";
-import { DropTargetMonitor, XYCoord, useDrag, useDragLayer, useDrop } from "react-dnd";
+import { DropTargetMonitor, XYCoord, useDrag, useDragDropManager, useDragLayer, useDrop } from "react-dnd";
 import { debounce, throttle } from "throttle-debounce";
 import { useDevicePixelRatio } from "use-device-pixel-ratio";
 import { LayoutModel } from "./layoutModel";
@@ -60,6 +60,7 @@ function TileLayoutComponent({ tabAtom, contents, getCursorPoint }: TileLayoutPr
     const setActiveDrag = useSetAtom(layoutModel.activeDrag);
     const setReady = useSetAtom(layoutModel.ready);
     const isResizing = useAtomValue(layoutModel.isResizing);
+    const dragDropManager = useDragDropManager();
 
     const { activeDrag, dragClientOffset, dragItemType } = useDragLayer((monitor) => ({
         activeDrag: monitor.isDragging(),
@@ -73,16 +74,31 @@ function TileLayoutComponent({ tabAtom, contents, getCursorPoint }: TileLayoutPr
     }, [activeDrag, dragItemType]);
 
     useEffect(() => {
-        const clearDrag = () => setActiveDrag(false);
+        // Reset react-dnd's monitor, not just the mirror atom — useDragLayer re-pushes a stale isDragging back otherwise.
+        const clearDrag = () => {
+            setActiveDrag(false);
+            if (dragDropManager.getMonitor().isDragging()) {
+                dragDropManager.getActions().endDrag();
+            }
+        };
+        const onVisibilityChange = () => {
+            if (document.visibilityState === "visible") {
+                clearDrag();
+            }
+        };
         window.addEventListener("focus", clearDrag);
         window.addEventListener("blur", clearDrag);
         window.addEventListener("dragend", clearDrag);
+        window.addEventListener("pointerdown", clearDrag, true);
+        document.addEventListener("visibilitychange", onVisibilityChange);
         return () => {
             window.removeEventListener("focus", clearDrag);
             window.removeEventListener("blur", clearDrag);
             window.removeEventListener("dragend", clearDrag);
+            window.removeEventListener("pointerdown", clearDrag, true);
+            document.removeEventListener("visibilitychange", onVisibilityChange);
         };
-    }, []);
+    }, [dragDropManager]);
 
     const checkForCursorBounds = useCallback(
         debounce(100, (dragClientOffset: XYCoord) => {
@@ -337,6 +353,7 @@ interface OverlayNodeWrapperProps {
 const OverlayNodeWrapper = memo(({ layoutModel }: OverlayNodeWrapperProps) => {
     const leafs = useAtomValue(layoutModel.leafs);
     const overlayTransform = useAtomValue(layoutModel.overlayTransform);
+    const activeDrag = useAtomValue(layoutModel.activeDrag);
 
     const overlayNodes = useMemo(
         () =>
@@ -347,7 +364,11 @@ const OverlayNodeWrapper = memo(({ layoutModel }: OverlayNodeWrapperProps) => {
     );
 
     return (
-        <div key="overlay" className="overlay-container" style={{ top: 10000, ...overlayTransform }}>
+        <div
+            key="overlay"
+            className="overlay-container"
+            style={{ top: 10000, ...overlayTransform, pointerEvents: activeDrag ? undefined : "none" }}
+        >
             {overlayNodes}
         </div>
     );
