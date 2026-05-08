@@ -15,13 +15,7 @@ import { waveEventSubscribeSingle } from "./wps";
 export const agentNotificationsAtom: PrimitiveAtom<AgentNotification[]> = atom([] as AgentNotification[]);
 
 const readIdsStorageKey = "agentNotifyReadIds";
-const defaultAgentReadPruneAgeMs = 5 * 60 * 1000;
-const agentReadPruneCheckIntervalMs = 60 * 1000;
-const agentReadPruneAgeKey: keyof SettingsType = "agent:clearreadafterms";
-const pendingPruneIds = new Set<string>();
 const unreadStatuses = new Set(["completion", "question", "waiting", "error"]);
-
-let agentReadPruneInterval: number | null = null;
 
 function areAgentNotificationsEqual(a: AgentNotification, b: AgentNotification): boolean {
     return (
@@ -116,7 +110,6 @@ export function markAgentNotificationRead(notifyId: string): void {
         saveReadIdsToStorage(next);
         return next;
     });
-    pruneReadAgentNotifications();
 }
 
 function clearAgentNotificationReadState(notifyId: string): void {
@@ -142,22 +135,9 @@ function isMeaningfulTypingKey(event: KeyboardEvent): boolean {
     return event.key === "Enter" || event.key === "Backspace" || event.key === "Delete" || event.key === "Tab";
 }
 
-function clearQuestionNotificationsForBlock(blockId: string): void {
-    const notifications = globalStore.get(agentNotificationsAtom);
-    const readIds = globalStore.get(agentReadIdsAtom);
-    for (const notification of notifications) {
-        if (readIds.has(notification.notifyid)) continue;
-        const notificationBlockId = notification.oref?.split(":")[1];
-        if (notificationBlockId !== blockId) continue;
-        if (notification.status !== "question" && notification.status !== "waiting") continue;
-        clearAgentNotification(notification.notifyid);
-    }
-}
-
 function markUnreadNotificationsReadForBlock(target: EventTarget | null): void {
     const targetBlockId = getEventBlockId(target);
     if (!targetBlockId) return;
-    clearQuestionNotificationsForBlock(targetBlockId);
     markUnreadNotificationsReadForBlockId(targetBlockId);
 }
 
@@ -173,10 +153,6 @@ export function markUnreadNotificationsReadForBlockId(
         if (readIds.has(notification.notifyid)) continue;
         const notificationBlockId = notification.oref?.split(":")[1];
         if (notificationBlockId !== targetBlockId) continue;
-        // Question and waiting notifications are cleared immediately on keystroke (see
-        // clearQuestionNotificationsForBlock); skip them here so they are not merely
-        // marked read by the Ctrl-w U navigation path.
-        if (notification.status === "question" || notification.status === "waiting") continue;
         const arrivedAt = notificationArrivalMs.get(notification.notifyid) ?? 0;
         if (!opts?.ignoreGracePeriod && now - arrivedAt < notificationKeystrokeGraceMs) continue;
         markAgentNotificationRead(notification.notifyid);
@@ -205,52 +181,9 @@ function flashBlockIfVisible(notification: AgentNotification): void {
     }, 300);
 }
 
-function getAgentReadPruneAgeMs(): number {
-    let configuredValue: unknown;
-    try {
-        configuredValue = globalStore.get(atoms.settingsAtom)?.[agentReadPruneAgeKey];
-    } catch {
-        return defaultAgentReadPruneAgeMs;
-    }
-    if (typeof configuredValue !== "number" || !Number.isFinite(configuredValue)) {
-        return defaultAgentReadPruneAgeMs;
-    }
-    return configuredValue;
-}
-
-function pruneReadAgentNotifications(): void {
-    const pruneAgeMs = getAgentReadPruneAgeMs();
-    if (pruneAgeMs < 0) return;
-
-    const now = Date.now();
-    const notifications = globalStore.get(agentNotificationsAtom);
-    const readIds = globalStore.get(agentReadIdsAtom);
-    for (const notification of notifications) {
-        if (!readIds.has(notification.notifyid)) continue;
-        if (!(notification.timestamp > 0)) continue;
-        if (now - notification.timestamp < pruneAgeMs) continue;
-        if (pendingPruneIds.has(notification.notifyid)) continue;
-
-        pendingPruneIds.add(notification.notifyid);
-        fireAndForget(async () => {
-            try {
-                await RpcApi.ClearAgentNotificationCommand(TabRpcClient, notification.notifyid);
-            } finally {
-                pendingPruneIds.delete(notification.notifyid);
-            }
-        });
-    }
-}
-
 export function setupAgentNotifySubscription(): void {
-    if (agentReadPruneInterval == null) {
-        pruneReadAgentNotifications();
-        agentReadPruneInterval = window.setInterval(pruneReadAgentNotifications, agentReadPruneCheckIntervalMs);
-    }
-
     const refreshReadIdsFromStorage = () => {
         globalStore.set(agentReadIdsAtom, loadReadIdsFromStorage());
-        pruneReadAgentNotifications();
     };
 
     // Sync read IDs across renderers: when another renderer marks a notification as read,
@@ -300,13 +233,11 @@ export function setupAgentNotifySubscription(): void {
                 globalStore.set(agentNotificationsAtom, []);
                 globalStore.set(agentReadIdsAtom, new Set<string>());
                 saveReadIdsToStorage(new Set<string>());
-                pendingPruneIds.clear();
                 return;
             }
             if (data.clear && data.notifyid) {
                 globalStore.set(agentNotificationsAtom, (prev) => prev.filter((n) => n.notifyid !== data.notifyid));
                 clearAgentNotificationReadState(data.notifyid);
-                pendingPruneIds.delete(data.notifyid);
                 notificationArrivalMs.delete(data.notifyid);
                 return;
             }
@@ -329,7 +260,6 @@ export function setupAgentNotifySubscription(): void {
                 return sortAgentNotifications([...prev, incoming]);
             });
             flashBlockIfVisible(incoming);
-            pruneReadAgentNotifications();
         },
     });
 }
@@ -339,7 +269,6 @@ export async function loadAgentNotifications(): Promise<void> {
         const notifications = await RpcApi.GetAllAgentNotificationsCommand(TabRpcClient);
         if (notifications == null) return;
         globalStore.set(agentNotificationsAtom, sortAgentNotifications(notifications));
-        pruneReadAgentNotifications();
     } catch (_) {
         // Non-fatal — panel will be empty on load failure
     }

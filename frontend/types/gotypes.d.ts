@@ -1417,7 +1417,6 @@ declare global {
         "app:tabbar"?: string;
         "app:blockbordercolor"?: string;
         "app:dimunfocusedblocks"?: number;
-        "agent:clearreadafterms"?: number;
         "agent:shellnotificationthresholdms"?: number;
         "feature:waveappbuilder"?: boolean;
         "ai:*"?: boolean;

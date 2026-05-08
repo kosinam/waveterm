@@ -273,9 +273,9 @@ The focused block border and resize handles now use a dedicated `--block-border-
   { "app:blockbordercolor": "rgb(160, 30, 30)" }
   ```
   Any CSS color value is accepted (`"#ff0000"`, `"red"`, `"hsl(0,100%,50%)"`, etc.).
-- Agent notifications are pruned automatically. Read notifications are cleared after 5 minutes and shell notifications are suppressed if a completion was seen within 10 seconds. Both thresholds are configurable:
+- Shell notifications are suppressed if a completion was seen within 10 seconds. The threshold is configurable:
   ```json
-  { "agent:clearreadafterms": 300000, "agent:shellnotificationthresholdms": 10000 }
+  { "agent:shellnotificationthresholdms": 10000 }
   ```
 
 ---
