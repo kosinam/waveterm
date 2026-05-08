@@ -19,6 +19,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/spf13/cobra"
 	"github.com/wavetermdev/waveterm/pkg/baseds"
+	"github.com/wavetermdev/waveterm/pkg/waveobj"
 	"github.com/wavetermdev/waveterm/pkg/wshrpc"
 	"github.com/wavetermdev/waveterm/pkg/wshrpc/wshclient"
 )
@@ -70,8 +71,10 @@ var agentHookClaudeCmd = &cobra.Command{
 			return agentHookClaudePostToolUseRun(cmd, args)
 		case "notification":
 			return agentHookClaudeNotificationRun(cmd, args)
+		case "sessionstart":
+			return agentHookClaudeSessionStartRun(cmd, args)
 		default:
-			return fmt.Errorf("unsupported hook type %q (supported: stop, stopfailure, posttooluse, notification)", args[0])
+			return fmt.Errorf("unsupported hook type %q (supported: stop, stopfailure, posttooluse, notification, sessionstart)", args[0])
 		}
 	},
 	PreRunE: preRunSetupRpcClient,
@@ -179,6 +182,7 @@ type claudeHookInput struct {
 	Error                string          `json:"error"`
 	ErrorDetails         string          `json:"error_details"`
 	ToolName             string          `json:"tool_name"`
+	Source               string          `json:"source"` // SessionStart: "startup"|"resume"|"clear"|"compact"
 }
 
 // claudeTranscriptEntry is one line of the Claude Code JSONL transcript.
@@ -526,6 +530,133 @@ func readClaudeHookInput() (claudeHookInput, string, error) {
 	return hookInput, cwd, nil
 }
 
+// extractClaudeSessionName scans the Claude transcript JSONL and returns the
+// most recent agent-name entry's agentName field (always kebab-case). Returns
+// "" if the transcript doesn't exist or no agent-name entry has been written
+// yet (e.g. very early in a brand-new session).
+func extractClaudeSessionName(transcriptPath string) string {
+	if transcriptPath == "" {
+		return ""
+	}
+	f, err := os.Open(transcriptPath)
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+
+	scanner := bufio.NewScanner(f)
+	scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
+	last := ""
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+		var entry struct {
+			Type      string `json:"type"`
+			AgentName string `json:"agentName"`
+		}
+		if err := json.Unmarshal([]byte(line), &entry); err != nil {
+			continue
+		}
+		if entry.Type == "agent-name" && entry.AgentName != "" {
+			last = entry.AgentName
+		}
+	}
+	return last
+}
+
+// sendClaudeHookNotificationWithTopic builds a Claude AgentNotification with
+// the given topic, sends it, and optionally rings the system bell.
+func sendClaudeHookNotificationWithTopic(message, cwd, status, notifyId, lifecycle, topic string, beep bool) error {
+	if message == "" {
+		message = "done"
+	}
+	message = normalizeNotificationMessage(message)
+
+	workDir := cwd
+	if workDir == "" {
+		workDir = os.Getenv("PWD")
+	}
+	branch := runGitCmd(workDir, "branch", "--show-current")
+	worktree := runGitCmd(workDir, "rev-parse", "--show-toplevel")
+
+	oref, _ := resolveBlockArg()
+	orefStr := ""
+	if oref != nil {
+		orefStr = oref.String()
+	}
+
+	if notifyId == "" && orefStr != "" {
+		notifyId = orefStr
+	}
+	if notifyId == "" {
+		id, err := uuid.NewV7()
+		if err != nil {
+			return fmt.Errorf("generating notify id: %v", err)
+		}
+		notifyId = id.String()
+	}
+	if lifecycle == "" {
+		lifecycle = agentLifecycleTerminal
+	}
+
+	notification := baseds.AgentNotification{
+		NotifyId:  notifyId,
+		ORef:      orefStr,
+		Agent:     "claude",
+		Status:    status,
+		Lifecycle: lifecycle,
+		Message:   message,
+		Topic:     topic,
+		WorkDir:   workDir,
+		Branch:    branch,
+		Worktree:  worktree,
+	}
+
+	if err := wshclient.AgentNotifyCommand(RpcClient, notification, &wshrpc.RpcOpts{NoResponse: true}); err != nil {
+		return err
+	}
+	if beep {
+		return wshclient.ElectronSystemBellCommand(RpcClient, &wshrpc.RpcOpts{Route: "electron"})
+	}
+	return nil
+}
+
+// clearFrameTextForBlock removes the frame:text metadata key on the current
+// terminal block, so the default live-cwd rendering takes over.
+func clearFrameTextForBlock() {
+	oref, err := resolveBlockArg()
+	if err != nil || oref == nil {
+		return
+	}
+	_ = wshclient.SetMetaCommand(RpcClient, wshrpc.CommandSetMetaData{
+		ORef: *oref,
+		Meta: waveobj.MetaMapType{"frame:text": nil},
+	}, &wshrpc.RpcOpts{NoResponse: true})
+}
+
+// setSessionTopicForBlock sets the terminal block header to "<cwd> [<topic>]".
+// If topic is empty, leaves frame:text unset so the default live-cwd rendering takes over.
+func setSessionTopicForBlock(cwd, topic string) {
+	if topic == "" {
+		return
+	}
+	oref, err := resolveBlockArg()
+	if err != nil || oref == nil {
+		return
+	}
+	displayCwd := cwd
+	if home := os.Getenv("HOME"); home != "" && (cwd == home || strings.HasPrefix(cwd, home+"/")) {
+		displayCwd = "~" + cwd[len(home):]
+	}
+	text := strings.TrimSpace(displayCwd + " (" + topic + ")")
+	_ = wshclient.SetMetaCommand(RpcClient, wshrpc.CommandSetMetaData{
+		ORef: *oref,
+		Meta: waveobj.MetaMapType{"frame:text": text},
+	}, &wshrpc.RpcOpts{NoResponse: true})
+}
+
 func agentHookClaudeStopRun(cmd *cobra.Command, args []string) (rtnErr error) {
 	defer func() {
 		sendActivity("agenthook-claude-stop", rtnErr == nil)
@@ -551,10 +682,43 @@ func agentHookClaudeStopRun(cmd *cobra.Command, args []string) (rtnErr error) {
 		message = extractTranscriptText(transcriptPath)
 	}
 
-	err = sendHookNotification(message, cwd, "completion")
+	topic := ""
+	if transcriptPath != "" {
+		topic = extractClaudeSessionName(transcriptPath)
+	}
+
+	err = sendClaudeHookNotificationWithTopic(message, cwd, "completion", "", "", topic, false)
 	if err != nil {
 		return fmt.Errorf("sending agent notification: %v", err)
 	}
+
+	setSessionTopicForBlock(cwd, topic)
+
+	return nil
+}
+
+func agentHookClaudeSessionStartRun(cmd *cobra.Command, args []string) (rtnErr error) {
+	defer func() {
+		sendActivity("agenthook-claude-sessionstart", rtnErr == nil)
+	}()
+
+	hookInput, cwd, err := readClaudeHookInput()
+	if err != nil {
+		return err
+	}
+
+	transcriptPath := hookInput.TranscriptPath
+	if transcriptPath == "" {
+		transcriptPath = hookInput.TranscriptPath2
+	}
+
+	switch hookInput.Source {
+	case "startup", "clear":
+		clearFrameTextForBlock()
+	case "resume":
+		setSessionTopicForBlock(cwd, extractClaudeSessionName(transcriptPath))
+	}
+	// "compact" or unrecognized: leave existing frame:text in place
 
 	return nil
 }
@@ -581,9 +745,21 @@ func agentHookClaudeStopFailureRun(cmd *cobra.Command, args []string) (rtnErr er
 	}
 	message = normalizeNotificationMessage(message)
 
-	if err := sendHookNotificationWithBeep(message, cwd, "error"); err != nil {
+	transcriptPath := hookInput.TranscriptPath
+	if transcriptPath == "" {
+		transcriptPath = hookInput.TranscriptPath2
+	}
+	topic := ""
+	if transcriptPath != "" {
+		topic = extractClaudeSessionName(transcriptPath)
+	}
+
+	if err := sendClaudeHookNotificationWithTopic(message, cwd, "error", "", "", topic, true); err != nil {
 		return fmt.Errorf("sending agent notification: %v", err)
 	}
+
+	setSessionTopicForBlock(cwd, topic)
+
 	return nil
 }
 
@@ -942,10 +1118,21 @@ func agentHookClaudeNotificationRun(cmd *cobra.Command, args []string) (rtnErr e
 
 	message = truncate(strings.Join(strings.Fields(message), " "), 300)
 
-	err = sendHookNotificationWithBeep(message, cwd, "question")
+	transcriptPath := hookInput.TranscriptPath
+	if transcriptPath == "" {
+		transcriptPath = hookInput.TranscriptPath2
+	}
+	topic := ""
+	if transcriptPath != "" {
+		topic = extractClaudeSessionName(transcriptPath)
+	}
+
+	err = sendClaudeHookNotificationWithTopic(message, cwd, "question", "", "", topic, true)
 	if err != nil {
 		return fmt.Errorf("sending agent notification: %v", err)
 	}
+
+	setSessionTopicForBlock(cwd, topic)
 
 	return nil
 }

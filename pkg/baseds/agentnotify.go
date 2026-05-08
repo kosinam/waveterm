@@ -15,6 +15,7 @@ type AgentNotification struct {
 	Status        string `json:"status"`                  // "completion"|"question"|"waiting"|"error"|"info"
 	Lifecycle     string `json:"lifecycle,omitempty"`     // "terminal"|"intermediate" (defaults to terminal)
 	Message       string `json:"message"`                 // notification text
+	Topic         string `json:"topic,omitempty"`         // terse session topic (rendered above message)
 	WorkDir       string `json:"workdir,omitempty"`       // working directory
 	Branch        string `json:"branch,omitempty"`        // git branch
 	Worktree      string `json:"worktree,omitempty"`      // git worktree root path

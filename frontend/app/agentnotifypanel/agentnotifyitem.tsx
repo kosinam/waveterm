@@ -77,14 +77,21 @@ export const AgentNotifyItem = memo(({ notification, isRead, onNavigate, getStat
                     className={cn("fa-solid shrink-0 mt-[1px] text-[11px]", icon)}
                     style={{ color }}
                 />
-                <span className={cn("text-[11px] leading-tight line-clamp-4 flex-1 min-w-0", isRead ? "text-primary" : "text-white")}>
-                    {notification.timestamp > 0 && (
-                        <span className={cn("mr-1.5 font-mono", isRead ? "text-secondary/50" : "text-white/50")}>
-                            {formatTime(notification.timestamp)}
-                        </span>
+                <div className={cn("text-[11px] leading-tight flex-1 min-w-0", isRead ? "text-primary" : "text-white")}>
+                    {notification.topic && (
+                        <div className={cn("font-semibold mb-0.5 line-clamp-1", isRead ? "text-yellow-400/80" : "text-yellow-300")}>
+                            {notification.topic}
+                        </div>
                     )}
-                    {notification.message}
-                </span>
+                    <div className="line-clamp-10">
+                        {notification.timestamp > 0 && (
+                            <span className={cn("mr-1.5 font-mono", isRead ? "text-secondary/50" : "text-white/50")}>
+                                {formatTime(notification.timestamp)}
+                            </span>
+                        )}
+                        {notification.message}
+                    </div>
+                </div>
                 {/* Dismiss button — visible on hover */}
                 <button
                     className={cn(

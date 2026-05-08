@@ -91,6 +91,7 @@ declare global {
         status: string;
         lifecycle?: string;
         message: string;
+        topic?: string;
         workdir?: string;
         branch?: string;
         worktree?: string;
