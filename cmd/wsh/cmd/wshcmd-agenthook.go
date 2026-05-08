@@ -531,9 +531,15 @@ func readClaudeHookInput() (claudeHookInput, string, error) {
 }
 
 // extractClaudeSessionName scans the Claude transcript JSONL and returns the
-// most recent agent-name entry's agentName field (always kebab-case). Returns
-// "" if the transcript doesn't exist or no agent-name entry has been written
-// yet (e.g. very early in a brand-new session).
+// most recent session label, reading both "agent-name" (kebab) and "ai-title"
+// (often sentence-style on the first turn, then kebab) entries. Whichever
+// appears later in the file wins. Returns "" if the transcript is missing or
+// has no label entries yet.
+//
+// Why both: agent-name only starts appearing after many turns into a session
+// (line ~170 in observed transcripts), while ai-title shows up after the first
+// turn (line ~10). Reading only agent-name leaves new sessions without a title
+// for a long time.
 func extractClaudeSessionName(transcriptPath string) string {
 	if transcriptPath == "" {
 		return ""
@@ -555,12 +561,20 @@ func extractClaudeSessionName(transcriptPath string) string {
 		var entry struct {
 			Type      string `json:"type"`
 			AgentName string `json:"agentName"`
+			AiTitle   string `json:"aiTitle"`
 		}
 		if err := json.Unmarshal([]byte(line), &entry); err != nil {
 			continue
 		}
-		if entry.Type == "agent-name" && entry.AgentName != "" {
-			last = entry.AgentName
+		switch entry.Type {
+		case "agent-name":
+			if entry.AgentName != "" {
+				last = entry.AgentName
+			}
+		case "ai-title":
+			if entry.AiTitle != "" {
+				last = entry.AiTitle
+			}
 		}
 	}
 	return last

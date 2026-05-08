@@ -83,7 +83,7 @@ export const AgentNotifyItem = memo(({ notification, isRead, onNavigate, getStat
                             {notification.topic}
                         </div>
                     )}
-                    <div className="line-clamp-10">
+                    <div className="line-clamp-7">
                         {notification.timestamp > 0 && (
                             <span className={cn("mr-1.5 font-mono", isRead ? "text-secondary/50" : "text-white/50")}>
                                 {formatTime(notification.timestamp)}
