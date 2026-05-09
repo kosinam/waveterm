@@ -138,6 +138,11 @@
 
         &.is-current .menu-group-title-wrapper {
             background-color: rgb(from var(--workspace-color) r g b / 0.1);
+
+            .label {
+                color: #4caf50;
+                font-weight: 600;
+            }
         }
     }
 
