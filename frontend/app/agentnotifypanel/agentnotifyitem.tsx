@@ -41,14 +41,14 @@ export const AgentNotifyItem = memo(({ notification, isRead, onNavigate, getStat
     const isShellCompletion = notification.agent === "shell" && isCompletion;
 
     const unreadBg = isShellCompletion
-        ? "bg-blue-800/80 hover:bg-blue-800/90"
+        ? "bg-blue-700/80 hover:bg-blue-700/90"
         : isCompletion
-        ? "bg-green-900/70 hover:bg-green-900/80"
+        ? "bg-green-800/70 hover:bg-green-800/80"
         : isQuestion
-          ? "bg-yellow-800/70 hover:bg-yellow-800/80"
+          ? "bg-yellow-700/70 hover:bg-yellow-700/80"
           : isError
-            ? "bg-red-900/70 hover:bg-red-900/80"
-            : "bg-blue-800/80 hover:bg-blue-800/90";
+            ? "bg-red-800/70 hover:bg-red-800/80"
+            : "bg-blue-700/80 hover:bg-blue-700/90";
 
     const handleClick = useCallback(() => {
         onNavigate(notification);
