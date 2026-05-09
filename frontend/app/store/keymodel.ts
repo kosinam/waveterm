@@ -1026,6 +1026,20 @@ function registerGlobalKeys() {
         handleSplitVerticalWeb("after");
         return true;
     });
+    // custom: i — open a sysinfo (CPU + Mem) pane to the right
+    ctrlBKeys.set("i", () => {
+        fireAndForget(async () => {
+            const layoutModel = getLayoutModelForStaticTab();
+            const focusedNode = globalStore.get(layoutModel.focusedNode);
+            if (focusedNode == null) return;
+            await createBlockSplitHorizontally(
+                { meta: { view: "sysinfo", "sysinfo:type": "CPU + Mem" } },
+                focusedNode.data.blockId,
+                "after"
+            );
+        });
+        return true;
+    });
     // custom: ? — prompt for a URL and open it in a new browser pane to the right
     ctrlBKeys.set("Shift:?", () => {
         const layoutModel = getLayoutModelForStaticTab();

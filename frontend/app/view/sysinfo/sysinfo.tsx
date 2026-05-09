@@ -215,7 +215,7 @@ class SysinfoViewModel implements ViewModel {
         this.plotTypeSelectedAtom = jotai.atom((get) => {
             const plotType = get(this.env.getBlockMetaKeyAtom(blockId, "sysinfo:type"));
             if (plotType == null || typeof plotType != "string") {
-                return "CPU";
+                return "CPU + Mem";
             }
             return plotType;
         });
@@ -367,7 +367,7 @@ function SysinfoView({ model, blockId }: SysinfoViewProps) {
     const addContinuousData = jotai.useSetAtom(model.addContinuousDataAtom);
     const loading = jotai.useAtomValue(model.loadingAtom);
 
-    const [lastThemeConnName, setLastThemeConnName] = React.useState<string | undefined>(connStatus?.connection);
+    const [lastThemeConnName, setLastThemeConnName] = React.useState<string | undefined>(undefined);
     React.useEffect(() => {
         const curConnName = connStatus?.connection;
         if (curConnName === lastThemeConnName) return;
