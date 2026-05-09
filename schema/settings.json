@@ -204,6 +204,9 @@
         "editor:inlinediff": {
           "type": "boolean"
         },
+        "editor:vimmode": {
+          "type": "boolean"
+        },
         "web:*": {
           "type": "boolean"
         },

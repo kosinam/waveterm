@@ -37,15 +37,18 @@ interface CodeEditorProps {
     fileName?: string;
     onChange?: (text: string) => void;
     onMount?: (monacoPtr: MonacoTypes.editor.IStandaloneCodeEditor, monaco: typeof MonacoModule) => () => void;
+    vimMode?: boolean;
 }
 
-export function CodeEditor({ blockId, text, language, fileName, readonly, onChange, onMount }: CodeEditorProps) {
+export function CodeEditor({ blockId, text, language, fileName, readonly, onChange, onMount, vimMode: vimModeProp }: CodeEditorProps) {
     const divRef = useRef<HTMLDivElement>(null);
     const unmountRef = useRef<() => void>(null);
     const minimapEnabled = useOverrideConfigAtom(blockId, "editor:minimapenabled") ?? false;
     const stickyScrollEnabled = useOverrideConfigAtom(blockId, "editor:stickyscrollenabled") ?? false;
     const wordWrap = useOverrideConfigAtom(blockId, "editor:wordwrap") ?? false;
     const fontSize = boundNumber(useOverrideConfigAtom(blockId, "editor:fontsize"), 6, 64);
+    const vimModeConfig = useOverrideConfigAtom(blockId, "editor:vimmode") ?? false;
+    const vimMode = vimModeProp ?? vimModeConfig;
     const uuidRef = useRef(crypto.randomUUID()).current;
     let editorPath: string;
     if (fileName) {
@@ -103,6 +106,7 @@ export function CodeEditor({ blockId, text, language, fileName, readonly, onChan
                     onMount={handleEditorOnMount}
                     path={editorPath}
                     language={language}
+                    vimMode={vimMode}
                 />
             </div>
         </div>

@@ -757,6 +757,8 @@ export class PreviewModel implements ViewModel {
         const loadableSV = globalStore.get(this.loadableSpecializedView);
         const wordWrapAtom = getOverrideConfigAtom(this.blockId, "editor:wordwrap");
         const wordWrap = globalStore.get(wordWrapAtom) ?? false;
+        const vimModeAtom = getOverrideConfigAtom(this.blockId, "editor:vimmode");
+        const vimMode = globalStore.get(vimModeAtom) ?? false;
         menuItems.push({ type: "separator" });
         if (loadableSV.state == "hasData" && loadableSV.data.specializedView == "codeedit") {
             const fontSizeSubMenu: ContextMenuItem[] = [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18].map(
@@ -810,6 +812,18 @@ export class PreviewModel implements ViewModel {
                         const blockOref = WOS.makeORef("block", this.blockId);
                         await this.env.services.object.UpdateObjectMeta(blockOref, {
                             "editor:wordwrap": !wordWrap,
+                        });
+                    }),
+            });
+            menuItems.push({
+                label: "Vim Mode",
+                type: "checkbox",
+                checked: vimMode,
+                click: () =>
+                    fireAndForget(async () => {
+                        const blockOref = WOS.makeORef("block", this.blockId);
+                        await this.env.services.object.UpdateObjectMeta(blockOref, {
+                            "editor:vimmode": !vimMode,
                         });
                     }),
             });

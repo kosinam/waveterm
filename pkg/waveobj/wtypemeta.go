@@ -85,6 +85,7 @@ type MetaTSType struct {
 	EditorStickyScrollEnabled bool    `json:"editor:stickyscrollenabled,omitempty"`
 	EditorWordWrap            bool    `json:"editor:wordwrap,omitempty"`
 	EditorFontSize            float64 `json:"editor:fontsize,omitempty"`
+	EditorVimMode             bool    `json:"editor:vimmode,omitempty"`
 
 	GraphClear     bool     `json:"graph:*,omitempty"`
 	GraphNumPoints int      `json:"graph:numpoints,omitempty"`

@@ -1,6 +1,7 @@
 // Copyright 2025, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+import { getOverrideConfigAtom } from "@/app/store/global";
 import { globalStore } from "@/app/store/jotaiStore";
 import { tryReinjectKey } from "@/app/store/keymodel";
 import { CodeEditor } from "@/app/view/codeeditor/codeeditor";
@@ -9,6 +10,7 @@ import { fireAndForget } from "@/util/util";
 import { useAtomValue, useSetAtom } from "jotai";
 import type * as MonacoTypes from "monaco-editor";
 import * as monaco from "monaco-editor";
+import { VimMode } from "monaco-vim";
 import { useEffect } from "react";
 import type { SpecializedViewProps } from "./preview";
 
@@ -76,7 +78,40 @@ function CodeEditPreview({ model }: SpecializedViewProps) {
     function onMount(editor: MonacoTypes.editor.IStandaloneCodeEditor, monacoApi: typeof monaco): () => void {
         model.monacoRef.current = editor;
 
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const Vim = (VimMode as any).Vim;
+        Vim.defineEx("write", "w", () => {
+            fireAndForget(model.handleFileSave.bind(model));
+        });
+        Vim.defineEx("quit", "q", (_cm: unknown, params: { argString?: string }) => {
+            const force = params?.argString?.trim() === "!";
+            const hasChanges = globalStore.get(model.newFileContent) != null;
+            if (!force && hasChanges) {
+                throw new Error("No write since last change (add ! to override)");
+            }
+            fireAndForget(async () => {
+                if (hasChanges) globalStore.set(model.newFileContent, null);
+                await model.goHistoryBack();
+            });
+        });
+        Vim.defineEx("wq", "wq", () => {
+            fireAndForget(async () => {
+                await model.handleFileSave();
+                await model.goHistoryBack();
+            });
+        });
+        Vim.defineEx("xit", "x", () => {
+            fireAndForget(async () => {
+                if (globalStore.get(model.newFileContent) != null) await model.handleFileSave();
+                await model.goHistoryBack();
+            });
+        });
+
         const keyDownDisposer = editor.onKeyDown((e: MonacoTypes.IKeyboardEvent) => {
+            const vimModeActive = globalStore.get(getOverrideConfigAtom(model.blockId, "editor:vimmode")) ?? false;
+            if (vimModeActive && !e.browserEvent.metaKey && !e.browserEvent.ctrlKey) {
+                return;
+            }
             const waveEvent = adaptFromReactOrNativeKeyEvent(e.browserEvent);
             const handled = tryReinjectKey(waveEvent);
             if (handled) {

@@ -123,6 +123,7 @@ type SettingsType struct {
 	EditorWordWrap            bool    `json:"editor:wordwrap,omitempty"`
 	EditorFontSize            float64 `json:"editor:fontsize,omitempty"`
 	EditorInlineDiff          bool    `json:"editor:inlinediff,omitempty"`
+	EditorVimMode             bool    `json:"editor:vimmode,omitempty"`
 
 	WebClear               bool   `json:"web:*,omitempty"`
 	WebOpenLinksInternally bool   `json:"web:openlinksinternally,omitempty"`

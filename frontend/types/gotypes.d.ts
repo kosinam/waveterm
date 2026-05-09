@@ -1175,6 +1175,7 @@ declare global {
         "editor:stickyscrollenabled"?: boolean;
         "editor:wordwrap"?: boolean;
         "editor:fontsize"?: number;
+        "editor:vimmode"?: boolean;
         "graph:*"?: boolean;
         "graph:numpoints"?: number;
         "graph:metrics"?: string[];
@@ -1461,6 +1462,7 @@ declare global {
         "editor:wordwrap"?: boolean;
         "editor:fontsize"?: number;
         "editor:inlinediff"?: boolean;
+        "editor:vimmode"?: boolean;
         "web:*"?: boolean;
         "web:openlinksinternally"?: boolean;
         "web:defaulturl"?: string;

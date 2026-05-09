@@ -106,6 +106,7 @@
         "jotai": "2.9.3",
         "mermaid": "^11.12.3",
         "monaco-editor": "^0.55.1",
+        "monaco-vim": "^0.4.4",
         "monaco-yaml": "^5.4.0",
         "overlayscrollbars": "^2.14.0",
         "overlayscrollbars-react": "^0.5.6",

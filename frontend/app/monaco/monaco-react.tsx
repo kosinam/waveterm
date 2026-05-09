@@ -4,6 +4,7 @@
 import { loadMonaco } from "@/app/monaco/monaco-env";
 import type * as MonacoTypes from "monaco-editor";
 import * as monaco from "monaco-editor";
+import { initVimMode } from "monaco-vim";
 import { useEffect, useRef } from "react";
 import { debounce } from "throttle-debounce";
 
@@ -20,13 +21,16 @@ type CodeEditorProps = {
     onMount?: (editor: MonacoTypes.editor.IStandaloneCodeEditor, monacoApi: typeof monaco) => () => void;
     path: string;
     options: MonacoTypes.editor.IEditorOptions;
+    vimMode?: boolean;
 };
 
-export function MonacoCodeEditor({ text, readonly, language, onChange, onMount, path, options }: CodeEditorProps) {
+export function MonacoCodeEditor({ text, readonly, language, onChange, onMount, path, options, vimMode }: CodeEditorProps) {
     const divRef = useRef<HTMLDivElement>(null);
+    const statusBarRef = useRef<HTMLDivElement>(null);
     const editorRef = useRef<MonacoTypes.editor.IStandaloneCodeEditor | null>(null);
     const onUnmountRef = useRef<(() => void) | null>(null);
     const applyingFromProps = useRef(false);
+    const vimInstanceRef = useRef<{ dispose(): void } | null>(null);
 
     useEffect(() => {
         loadMonaco();
@@ -55,6 +59,10 @@ export function MonacoCodeEditor({ text, readonly, language, onChange, onMount, 
 
         return () => {
             sub.dispose();
+            if (vimInstanceRef.current) {
+                vimInstanceRef.current.dispose();
+                vimInstanceRef.current = null;
+            }
             if (onUnmountRef.current) onUnmountRef.current();
             editor.setModel(null);
             editor.dispose();
@@ -113,7 +121,30 @@ export function MonacoCodeEditor({ text, readonly, language, onChange, onMount, 
         monaco.editor.setModelLanguage(model, language);
     }, [language]);
 
-    return <div className="flex flex-col h-full w-full" ref={divRef} />;
+    useEffect(() => {
+        const editor = editorRef.current;
+        if (!editor) return;
+        if (vimInstanceRef.current) {
+            vimInstanceRef.current.dispose();
+            vimInstanceRef.current = null;
+        }
+        if (vimMode) {
+            vimInstanceRef.current = initVimMode(editor, statusBarRef.current);
+        }
+        return () => {
+            if (vimInstanceRef.current) {
+                vimInstanceRef.current.dispose();
+                vimInstanceRef.current = null;
+            }
+        };
+    }, [vimMode]);
+
+    return (
+        <div className="flex flex-col h-full w-full">
+            <div className="flex-1 min-h-0 w-full" ref={divRef} />
+            <div className="vim-status-bar" ref={statusBarRef} style={{ display: vimMode ? "block" : "none" }} />
+        </div>
+    );
 }
 
 type DiffViewerProps = {
