@@ -127,7 +127,18 @@ const WorkspaceElem = memo(() => {
                         onLayout={workspaceLayoutModel.handleOuterPanelLayout}
                         ref={outerPanelGroupRef}
                     >
-                        <Panel order={0} defaultSize={leftGroupInitialPct} minSize={0} collapsible className="overflow-hidden">
+                        <Panel
+                            ref={agentNotifyPanelRef}
+                            collapsible
+                            order={0}
+                            defaultSize={agentNotifyInitialPct}
+                            minSize={0}
+                            className="overflow-hidden"
+                        >
+                            <AgentNotifyPanel />
+                        </Panel>
+                        <PanelResizeHandle className={agentNotifyHandleClass} />
+                        <Panel order={1} defaultSize={leftGroupInitialPct} minSize={0} collapsible className="overflow-hidden">
                             <PanelGroup
                                 direction="horizontal"
                                 onLayout={workspaceLayoutModel.handleInnerPanelLayout}
@@ -162,7 +173,7 @@ const WorkspaceElem = memo(() => {
                             </PanelGroup>
                         </Panel>
                         <PanelResizeHandle className={outerHandleClass} />
-                        <Panel order={1} defaultSize={100 - agentNotifyInitialPct - leftGroupInitialPct}>
+                        <Panel order={2} defaultSize={100 - agentNotifyInitialPct - leftGroupInitialPct}>
                             {tabId === "" ? (
                                 <CenteredDiv>No Active Tab</CenteredDiv>
                             ) : (
@@ -171,17 +182,6 @@ const WorkspaceElem = memo(() => {
                                     {!hideWidgetPanel && <Widgets />}
                                 </div>
                             )}
-                        </Panel>
-                        <PanelResizeHandle className={agentNotifyHandleClass} />
-                        <Panel
-                            ref={agentNotifyPanelRef}
-                            collapsible
-                            order={2}
-                            defaultSize={agentNotifyInitialPct}
-                            minSize={0}
-                            className="overflow-hidden"
-                        >
-                            <AgentNotifyPanel />
                         </Panel>
                     </PanelGroup>
                     <ModalsRenderer />

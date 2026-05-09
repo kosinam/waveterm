@@ -25,7 +25,7 @@ const VTabBar_DefaultWidth = 220;
 const VTabBar_MinWidth = 110;
 const VTabBar_MaxWidth = 280;
 
-const AgentNotifyPanel_DefaultWidth = 318;
+const AgentNotifyPanel_DefaultWidth = 276;
 const AgentNotifyPanel_MinWidth = 200;
 const AgentNotifyPanel_MaxWidth = 525;
 
@@ -235,7 +235,7 @@ class WorkspaceLayoutModel {
         const aiW = this.aiPanelVisible ? this.getResolvedAIWidth(windowWidth) : 0;
         const leftGroupW = vtabW + aiW;
 
-        // outer: [leftGroupPct, contentPct, agentNotifyPct]
+        // outer: [agentNotifyPct, leftGroupPct, contentPct]
         const agentNotifyPct = windowWidth > 0 ? (agentNotifyW / windowWidth) * 100 : 0;
         const leftPct = windowWidth > 0 ? (leftGroupW / windowWidth) * 100 : 0;
         const contentPct = Math.max(0, 100 - agentNotifyPct - leftPct);
@@ -251,7 +251,7 @@ class WorkspaceLayoutModel {
             aiPct = 50;
         }
 
-        return { outer: [leftPct, contentPct, agentNotifyPct], inner: [vtabPct, aiPct] };
+        return { outer: [agentNotifyPct, leftPct, contentPct], inner: [vtabPct, aiPct] };
     }
 
     private commitLayouts(windowWidth: number): void {
@@ -271,9 +271,9 @@ class WorkspaceLayoutModel {
     handleOuterPanelLayout(sizes: number[]): void {
         if (this.inResize) return;
         const windowWidth = window.innerWidth;
-        // sizes: [leftGroupPct, contentPct, agentNotifyPct]
-        const newLeftGroupPx = (sizes[0] / 100) * windowWidth;
-        const newAgentNotifyPx = (sizes[2] / 100) * windowWidth;
+        // sizes: [agentNotifyPct, leftGroupPct, contentPct]
+        const newAgentNotifyPx = (sizes[0] / 100) * windowWidth;
+        const newLeftGroupPx = (sizes[1] / 100) * windowWidth;
 
         // Update agent notify width if it was resized
         if (this.agentNotifyPanelVisible && newAgentNotifyPx > 0) {
