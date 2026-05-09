@@ -69,7 +69,7 @@ const TermResyncHandler = React.memo(({ blockId, model }: TerminalViewProps) => 
 
 const TermConnThemeHandler = React.memo(({ model }: TerminalViewProps) => {
     const connStatus = jotai.useAtomValue(model.connStatus);
-    const [lastConnName, setLastConnName] = React.useState<string | undefined>(connStatus?.connection);
+    const [lastConnName, setLastConnName] = React.useState<string | undefined>(undefined);
 
     React.useEffect(() => {
         const curConnName = connStatus?.connection;

@@ -112,7 +112,7 @@ function PreviewView({
     const connection = useAtomValue(model.connectionImmediate);
     const fileInfo = useAtomValue(model.statFile);
 
-    const [lastThemeConnName, setLastThemeConnName] = useState<string | undefined>(connStatus?.connection);
+    const [lastThemeConnName, setLastThemeConnName] = useState<string | undefined>(undefined);
     useEffect(() => {
         const curConnName = connStatus?.connection;
         if (curConnName === lastThemeConnName) return;
