@@ -59,6 +59,27 @@ function defaultMemMeta(name: string, maxY: string): TimeSeriesMeta {
     };
 }
 
+function defaultDiskMeta(name: string): TimeSeriesMeta {
+    return {
+        name: name,
+        label: "%",
+        miny: 0,
+        maxy: 100,
+        color: "var(--sysinfo-disk-color)",
+        decimalPlaces: 0,
+    };
+}
+
+function defaultNetMeta(name: string): TimeSeriesMeta {
+    return {
+        name: name,
+        label: "MB/s",
+        miny: 0,
+        color: "var(--sysinfo-net-color)",
+        decimalPlaces: 2,
+    };
+}
+
 const PlotTypes: object = {
     CPU: function (_dataItem: DataItem): Array<string> {
         return ["cpu"];
@@ -68,6 +89,12 @@ const PlotTypes: object = {
     },
     "CPU + Mem": function (_dataItem: DataItem): Array<string> {
         return ["cpu", "mem:used"];
+    },
+    Disk: function (_dataItem: DataItem): Array<string> {
+        return ["disk:pct"];
+    },
+    Net: function (_dataItem: DataItem): Array<string> {
+        return ["net:in", "net:out"];
     },
     "All CPU": function (dataItem: DataItem): Array<string> {
         return Object.keys(dataItem)
@@ -86,6 +113,9 @@ const DefaultPlotMeta = {
     "mem:used": defaultMemMeta("Memory Used", "mem:total"),
     "mem:free": defaultMemMeta("Memory Free", "mem:total"),
     "mem:available": defaultMemMeta("Memory Available", "mem:total"),
+    "disk:pct": defaultDiskMeta("Disk Used %"),
+    "net:in": defaultNetMeta("Net In"),
+    "net:out": defaultNetMeta("Net Out"),
 };
 for (let i = 0; i < 32; i++) {
     DefaultPlotMeta[`cpu:${i}`] = defaultCpuMeta(`Core ${i}`);
