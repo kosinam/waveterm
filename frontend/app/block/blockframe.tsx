@@ -126,7 +126,9 @@ const BlockFrame_Default_Component = (props: BlockFrameProps) => {
     const dimUnfocusedBlocks = jotai.useAtomValue(dimUnfocusedBlocksAtom);
     const focusType = jotai.useAtomValue(FocusManager.getInstance().focusType);
     const unfocusedBlockOpacity =
-        dimUnfocusedBlocks != null && focusType === "node" && !isFocused ? dimUnfocusedBlocks : undefined;
+        dimUnfocusedBlocks != null && focusType === "node" && !isFocused && !isMagnified
+            ? dimUnfocusedBlocks
+            : undefined;
     const connBtnRef = React.useRef<HTMLDivElement>(null);
     const connName = jotai.useAtomValue(waveEnv.getBlockMetaKeyAtom(nodeModel.blockId, "connection"));
     const iconColor = jotai.useAtomValue(waveEnv.getBlockMetaKeyAtom(nodeModel.blockId, "icon:color"));
