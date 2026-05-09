@@ -27,7 +27,7 @@ export type SysinfoEnv = WaveEnvSubset<{
         fullConfigAtom: WaveEnv["atoms"]["fullConfigAtom"];
     };
     getConnStatusAtom: WaveEnv["getConnStatusAtom"];
-    getBlockMetaKeyAtom: MetaKeyAtomFnType<"graph:numpoints" | "sysinfo:type" | "connection" | "count" | "term:theme">;
+    getBlockMetaKeyAtom: MetaKeyAtomFnType<"graph:numpoints" | "sysinfo:type" | "connection" | "count">;
 }>;
 
 const DefaultNumPoints = 120;
@@ -246,13 +246,7 @@ class SysinfoViewModel implements ViewModel {
             const connAtom = this.env.getConnStatusAtom(connName);
             return get(connAtom);
         });
-        this.blockBg = jotai.atom((get) => {
-            const themeName = get(this.env.getBlockMetaKeyAtom(blockId, "term:theme"));
-            if (!themeName) return null;
-            const fullConfig = get(this.env.atoms.fullConfigAtom);
-            const [_, bgcolor] = computeTheme(fullConfig, themeName, 0);
-            return bgcolor ? { bg: bgcolor } : null;
-        });
+        this.blockBg = jotai.atom(null as MetaType);
     }
 
     get viewComponent(): ViewComponent {
@@ -260,6 +254,13 @@ class SysinfoViewModel implements ViewModel {
     }
 
     setTerminalTheme(themeName: string | null) {
+        const newBg = (() => {
+            if (!themeName) return null;
+            const fullConfig = globalStore.get(this.env.atoms.fullConfigAtom);
+            const [_, bgcolor] = computeTheme(fullConfig, themeName, 0);
+            return bgcolor ? ({ bg: bgcolor } as MetaType) : null;
+        })();
+        globalStore.set(this.blockBg as jotai.PrimitiveAtom<MetaType>, newBg);
         this.env.rpc.SetMetaCommand(TabRpcClient, {
             oref: makeORef("block", this.blockId),
             meta: { "term:theme": themeName },

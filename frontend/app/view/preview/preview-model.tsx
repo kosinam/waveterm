@@ -489,18 +489,19 @@ export class PreviewModel implements ViewModel {
             const connAtom = this.env.getConnStatusAtom(connName);
             return get(connAtom);
         });
-        this.blockBg = atom((get) => {
-            const themeName = get(getOverrideConfigAtom(this.blockId, "term:theme"));
-            if (!themeName) return null;
-            const fullConfig = get(this.env.atoms.fullConfigAtom);
-            const [_, bgcolor] = computeTheme(fullConfig, themeName, 0);
-            return bgcolor ? { bg: bgcolor } : null;
-        });
+        this.blockBg = atom(null as MetaType);
 
         this.noPadding = atom(true);
     }
 
     setTerminalTheme(themeName: string | null) {
+        const newBg = (() => {
+            if (!themeName) return null;
+            const fullConfig = globalStore.get(this.env.atoms.fullConfigAtom);
+            const [_, bgcolor] = computeTheme(fullConfig, themeName, 0);
+            return bgcolor ? ({ bg: bgcolor } as MetaType) : null;
+        })();
+        globalStore.set(this.blockBg as PrimitiveAtom<MetaType>, newBg);
         this.env.rpc.SetMetaCommand(TabRpcClient, {
             oref: WOS.makeORef("block", this.blockId),
             meta: { "term:theme": themeName },
