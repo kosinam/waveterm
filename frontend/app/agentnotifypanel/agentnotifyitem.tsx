@@ -83,9 +83,39 @@ export const AgentNotifyItem = memo(({ notification, isRead, onNavigate, getStat
                             {notification.topic}
                         </div>
                     )}
+                    {(notification.workdir || notification.agent || notification.branch) && (
+                        <div className="flex flex-wrap items-center gap-x-2 mb-0.5">
+                            {notification.workdir && (
+                                <span className={cn("flex items-center gap-0.5 text-[10px] min-w-0 max-w-full", isRead ? "text-secondary/70" : "text-white/75")}>
+                                    <i className="fa-solid fa-folder shrink-0" style={{ fontSize: "9px" }} />
+                                    <span className="truncate">{shortenPath(notification.workdir)}</span>
+                                </span>
+                            )}
+                            {notification.agent && (
+                                <span className={cn("flex items-center gap-0.5 text-[10px] min-w-0", isRead ? "text-secondary/70" : "text-white/75")}>
+                                    <i className="fa-solid fa-terminal shrink-0" style={{ fontSize: "9px" }} />
+                                    <span className="truncate">{notification.agent}</span>
+                                </span>
+                            )}
+                            {notification.branch && (
+                                <span className={cn("flex items-center gap-0.5 text-[10px] min-w-0 max-w-full", isRead ? "text-secondary/70" : "text-white/75")}>
+                                    <i className="fa-solid fa-code-branch shrink-0" style={{ fontSize: "9px" }} />
+                                    <span className="truncate">{shortenBranch(notification.branch)}</span>
+                                </span>
+                            )}
+                        </div>
+                    )}
+                    {notification.worktree && notification.worktree !== notification.workdir && (
+                        <div className="flex items-center mb-0.5">
+                            <span className={cn("flex items-center gap-0.5 text-[10px] min-w-0 max-w-full", isRead ? "text-secondary/70" : "text-white/75")}>
+                                <i className="fa-solid fa-code-fork shrink-0" style={{ fontSize: "9px" }} />
+                                <span className="truncate">{shortenPath(notification.worktree)}</span>
+                            </span>
+                        </div>
+                    )}
                     <div className="line-clamp-7">
                         {notification.timestamp > 0 && (
-                            <span className={cn("mr-1.5 font-mono", isRead ? "text-secondary/50" : "text-white/50")}>
+                            <span className={cn("mr-1.5 font-mono", isRead ? "text-secondary/65" : "text-white/65")}>
                                 {formatTime(notification.timestamp)}
                             </span>
                         )}
@@ -104,34 +134,6 @@ export const AgentNotifyItem = memo(({ notification, isRead, onNavigate, getStat
                 >
                     <i className="fa-solid fa-xmark" />
                 </button>
-            </div>
-
-            {/* Metadata row: agent, branch, workdir */}
-            <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 pl-[18px]">
-                {notification.agent && (
-                    <span className={cn("flex items-center gap-0.5 text-[10px] min-w-0", isRead ? "text-secondary/60" : "text-white/70")}>
-                        <i className="fa-solid fa-terminal shrink-0" style={{ fontSize: "9px" }} />
-                        <span className="truncate">{notification.agent}</span>
-                    </span>
-                )}
-                {notification.branch && (
-                    <span className={cn("flex items-center gap-0.5 text-[10px] min-w-0 max-w-full", isRead ? "text-secondary/60" : "text-white/70")}>
-                        <i className="fa-solid fa-code-branch shrink-0" style={{ fontSize: "9px" }} />
-                        <span className="truncate">{shortenBranch(notification.branch)}</span>
-                    </span>
-                )}
-                {notification.workdir && (
-                    <span className={cn("flex items-center gap-0.5 text-[10px] min-w-0 max-w-full", isRead ? "text-secondary/50" : "text-white/60")}>
-                        <i className="fa-solid fa-folder shrink-0" style={{ fontSize: "9px" }} />
-                        <span className="truncate">{shortenPath(notification.workdir)}</span>
-                    </span>
-                )}
-                {notification.worktree && (
-                    <span className={cn("flex items-center gap-0.5 text-[10px] min-w-0 max-w-full", isRead ? "text-secondary/50" : "text-white/60")}>
-                        <i className="fa-solid fa-code-fork shrink-0" style={{ fontSize: "9px" }} />
-                        <span className="truncate">{shortenPath(notification.worktree)}</span>
-                    </span>
-                )}
             </div>
 
         </div>
