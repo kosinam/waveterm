@@ -41,14 +41,14 @@ export const AgentNotifyItem = memo(({ notification, isRead, onNavigate, getStat
     const isShellCompletion = notification.agent === "shell" && isCompletion;
 
     const unreadBg = isShellCompletion
-        ? "bg-blue-600/80 hover:bg-blue-600/90"
+        ? "bg-blue-800/80 hover:bg-blue-800/90"
         : isCompletion
-        ? "bg-green-700/70 hover:bg-green-700/80"
+        ? "bg-green-900/70 hover:bg-green-900/80"
         : isQuestion
-          ? "bg-yellow-600/70 hover:bg-yellow-600/80"
+          ? "bg-yellow-800/70 hover:bg-yellow-800/80"
           : isError
-            ? "bg-red-700/70 hover:bg-red-700/80"
-            : "bg-blue-600/80 hover:bg-blue-600/90";
+            ? "bg-red-900/70 hover:bg-red-900/80"
+            : "bg-blue-800/80 hover:bg-blue-800/90";
 
     const handleClick = useCallback(() => {
         onNavigate(notification);
@@ -86,7 +86,7 @@ export const AgentNotifyItem = memo(({ notification, isRead, onNavigate, getStat
                     {(notification.workdir || notification.agent || notification.branch) && (
                         <div className="flex flex-wrap items-center gap-x-2 mb-0.5">
                             {notification.workdir && (
-                                <span className={cn("flex items-center gap-0.5 text-[10px] min-w-0 max-w-full", isRead ? "text-secondary/70" : "text-white/75")}>
+                                <span className={cn("flex items-center gap-0.5 text-[10px] min-w-0 max-w-full font-medium", isRead ? "text-sky-300" : "text-sky-200")}>
                                     <i className="fa-solid fa-folder shrink-0" style={{ fontSize: "9px" }} />
                                     <span className="truncate">{shortenPath(notification.workdir)}</span>
                                 </span>
@@ -107,7 +107,7 @@ export const AgentNotifyItem = memo(({ notification, isRead, onNavigate, getStat
                     )}
                     {notification.worktree && notification.worktree !== notification.workdir && (
                         <div className="flex items-center mb-0.5">
-                            <span className={cn("flex items-center gap-0.5 text-[10px] min-w-0 max-w-full", isRead ? "text-secondary/70" : "text-white/75")}>
+                            <span className={cn("flex items-center gap-0.5 text-[10px] min-w-0 max-w-full font-medium", isRead ? "text-sky-300" : "text-sky-200")}>
                                 <i className="fa-solid fa-code-fork shrink-0" style={{ fontSize: "9px" }} />
                                 <span className="truncate">{shortenPath(notification.worktree)}</span>
                             </span>
