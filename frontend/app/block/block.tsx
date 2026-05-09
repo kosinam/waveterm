@@ -111,7 +111,11 @@ const BlockFull = memo(({ nodeModel, viewModel }: FullBlockProps) => {
     }, []);
 
     useLayoutEffect(() => {
-        setBlockClicked(isFocused);
+        if (!isFocused) return;
+        const focusWithin = focusedBlockId() == nodeModel.blockId;
+        if (!focusWithin) {
+            setFocusTarget();
+        }
     }, [isFocused]);
 
     useLayoutEffect(() => {
@@ -126,7 +130,7 @@ const BlockFull = memo(({ nodeModel, viewModel }: FullBlockProps) => {
         if (!isFocused) {
             nodeModel.focusNode();
         }
-    }, [blockClicked, isFocused]);
+    }, [blockClicked]);
 
     const setBlockClickedTrue = useCallback(() => {
         setBlockClicked(true);

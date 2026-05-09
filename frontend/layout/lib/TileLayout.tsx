@@ -272,7 +272,6 @@ const DisplayNode = ({ layoutModel, node }: DisplayNodeProps) => {
 
     const [previewElementGeneration, setPreviewElementGeneration] = useState(0);
     const previewElement = useMemo(() => {
-        setPreviewElementGeneration(previewElementGeneration + 1);
         return (
             <div key="preview" className="tile-preview-container">
                 <div
@@ -288,6 +287,9 @@ const DisplayNode = ({ layoutModel, node }: DisplayNodeProps) => {
                 </div>
             </div>
         );
+    }, [devicePixelRatio, nodeModel]);
+    useEffect(() => {
+        setPreviewElementGeneration((prev) => prev + 1);
     }, [devicePixelRatio, nodeModel]);
 
     const [previewImage, setPreviewImage] = useState<HTMLImageElement>(null);
