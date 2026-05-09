@@ -6,9 +6,9 @@ import { globalStore } from "@/app/store/jotaiStore";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
 import { BlockHeaderSuggestionControl } from "@/app/suggestion/suggestion";
 import { useWaveEnv } from "@/app/waveenv/waveenv";
-import { isBlank, makeConnRoute } from "@/util/util";
+import { isBlank, isLocalConnName, makeConnRoute } from "@/util/util";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
-import { memo, useEffect } from "react";
+import { memo, useEffect, useState } from "react";
 import { CSVView } from "./csvview";
 import { DirectoryPreview } from "./preview-directory";
 import { CodeEditPreview } from "./preview-edit";
@@ -112,6 +112,17 @@ function PreviewView({
     const connection = useAtomValue(model.connectionImmediate);
     const fileInfo = useAtomValue(model.statFile);
 
+    const [lastThemeConnName, setLastThemeConnName] = useState<string | undefined>(connStatus?.connection);
+    useEffect(() => {
+        const curConnName = connStatus?.connection;
+        if (curConnName === lastThemeConnName) return;
+        setLastThemeConnName(curConnName);
+        if (curConnName && !isLocalConnName(curConnName)) {
+            model.setTerminalTheme("warmyellow");
+        } else {
+            model.setTerminalTheme(null);
+        }
+    }, [connStatus?.connection]);
     useEffect(() => {
         console.log("fileInfo or connection changed", fileInfo, connection);
         if (!fileInfo) {

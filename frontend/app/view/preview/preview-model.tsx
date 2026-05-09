@@ -7,6 +7,7 @@ import { globalStore } from "@/app/store/jotaiStore";
 import type { TabModel } from "@/app/store/tab-model";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
 import { getOverrideConfigAtom, refocusNode } from "@/store/global";
+import { computeTheme } from "@/app/view/term/termutil";
 import * as WOS from "@/store/wos";
 import { goHistory, goHistoryBack, goHistoryForward } from "@/util/historyutil";
 import { checkKeyPressed } from "@/util/keyutil";
@@ -136,6 +137,7 @@ export class PreviewModel implements ViewModel {
     loadableSpecializedView: Atom<Loadable<{ specializedView?: string; errorStr?: string }>>;
     manageConnection: Atom<boolean>;
     connStatus: Atom<ConnStatus>;
+    blockBg: Atom<MetaType>;
     filterOutNowsh?: Atom<boolean>;
 
     metaFilePath: Atom<string>;
@@ -487,8 +489,22 @@ export class PreviewModel implements ViewModel {
             const connAtom = this.env.getConnStatusAtom(connName);
             return get(connAtom);
         });
+        this.blockBg = atom((get) => {
+            const themeName = get(getOverrideConfigAtom(this.blockId, "term:theme"));
+            if (!themeName) return null;
+            const fullConfig = get(this.env.atoms.fullConfigAtom);
+            const [_, bgcolor] = computeTheme(fullConfig, themeName, 0);
+            return bgcolor ? { bg: bgcolor } : null;
+        });
 
         this.noPadding = atom(true);
+    }
+
+    setTerminalTheme(themeName: string | null) {
+        this.env.rpc.SetMetaCommand(TabRpcClient, {
+            oref: WOS.makeORef("block", this.blockId),
+            meta: { "term:theme": themeName },
+        });
     }
 
     markdownShowTocToggle() {

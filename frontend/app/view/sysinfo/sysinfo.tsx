@@ -15,6 +15,7 @@ import { useDimensionsWithExistingRef } from "@/app/hook/useDimensions";
 import { waveEventSubscribeSingle } from "@/app/store/wps";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
 import type { MetaKeyAtomFnType, WaveEnv, WaveEnvSubset } from "@/app/waveenv/waveenv";
+import { computeTheme } from "@/app/view/term/termutil";
 import { OverlayScrollbarsComponent, OverlayScrollbarsComponentRef } from "overlayscrollbars-react";
 
 export type SysinfoEnv = WaveEnvSubset<{
@@ -26,7 +27,7 @@ export type SysinfoEnv = WaveEnvSubset<{
         fullConfigAtom: WaveEnv["atoms"]["fullConfigAtom"];
     };
     getConnStatusAtom: WaveEnv["getConnStatusAtom"];
-    getBlockMetaKeyAtom: MetaKeyAtomFnType<"graph:numpoints" | "sysinfo:type" | "connection" | "count">;
+    getBlockMetaKeyAtom: MetaKeyAtomFnType<"graph:numpoints" | "sysinfo:type" | "connection" | "count" | "term:theme">;
 }>;
 
 const DefaultNumPoints = 120;
@@ -121,6 +122,7 @@ class SysinfoViewModel implements ViewModel {
     manageConnection: jotai.Atom<boolean>;
     filterOutNowsh: jotai.Atom<boolean>;
     connStatus: jotai.Atom<ConnStatus>;
+    blockBg: jotai.Atom<MetaType>;
     plotMetaAtom: jotai.PrimitiveAtom<Map<string, TimeSeriesMeta>>;
     endIconButtons: jotai.Atom<IconButtonDecl[]>;
     plotTypeSelectedAtom: jotai.Atom<string>;
@@ -244,10 +246,24 @@ class SysinfoViewModel implements ViewModel {
             const connAtom = this.env.getConnStatusAtom(connName);
             return get(connAtom);
         });
+        this.blockBg = jotai.atom((get) => {
+            const themeName = get(this.env.getBlockMetaKeyAtom(blockId, "term:theme"));
+            if (!themeName) return null;
+            const fullConfig = get(this.env.atoms.fullConfigAtom);
+            const [_, bgcolor] = computeTheme(fullConfig, themeName, 0);
+            return bgcolor ? { bg: bgcolor } : null;
+        });
     }
 
     get viewComponent(): ViewComponent {
         return SysinfoView;
+    }
+
+    setTerminalTheme(themeName: string | null) {
+        this.env.rpc.SetMetaCommand(TabRpcClient, {
+            oref: makeORef("block", this.blockId),
+            meta: { "term:theme": themeName },
+        });
     }
 
     async loadInitialData() {
@@ -351,6 +367,17 @@ function SysinfoView({ model, blockId }: SysinfoViewProps) {
     const addContinuousData = jotai.useSetAtom(model.addContinuousDataAtom);
     const loading = jotai.useAtomValue(model.loadingAtom);
 
+    const [lastThemeConnName, setLastThemeConnName] = React.useState<string | undefined>(connStatus?.connection);
+    React.useEffect(() => {
+        const curConnName = connStatus?.connection;
+        if (curConnName === lastThemeConnName) return;
+        setLastThemeConnName(curConnName);
+        if (curConnName && !util.isLocalConnName(curConnName)) {
+            model.setTerminalTheme("warmyellow");
+        } else {
+            model.setTerminalTheme(null);
+        }
+    }, [connStatus?.connection]);
     React.useEffect(() => {
         if (connStatus?.status != "connected") {
             return;
