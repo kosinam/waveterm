@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { BlockNodeModel } from "@/app/block/blocktypes";
-import { markUnreadNotificationsReadForBlockId } from "@/app/store/agentnotify";
 import { setBadge } from "@/app/store/badge";
 import { getFileSubject } from "@/app/store/wps";
 import { RpcApi } from "@/app/store/wshclientapi";
@@ -429,10 +428,6 @@ export class TermWrap {
     handleTermData(data: string) {
         if (!this.loaded) {
             return;
-        }
-
-        if (data.length > 0) {
-            markUnreadNotificationsReadForBlockId(this.blockId, { ignoreGracePeriod: true });
         }
         this.sendDataHandler?.(data);
         this.multiInputCallback?.(data);
