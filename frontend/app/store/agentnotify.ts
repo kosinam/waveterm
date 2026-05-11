@@ -95,11 +95,17 @@ const notificationKeystrokeGraceMs = 3000;
 // Set of notifyids that have been read (navigated to), persisted across workspace switches.
 export const agentReadIdsAtom: PrimitiveAtom<Set<string>> = atom(loadReadIdsFromStorage());
 
+// Map of notifyid → latest intermediate notification (agent is actively working).
+// Cleared when the terminal notification arrives for that notifyid.
+export const agentInProgressAtom: PrimitiveAtom<Map<string, AgentNotification>> = atom(
+    new Map<string, AgentNotification>()
+);
+
 // Derived count of unread notifications.
 export const agentUnreadCountAtom = atom((get) => {
     const notifications = get(agentNotificationsAtom);
     const readIds = get(agentReadIdsAtom);
-    return notifications.filter((n) => !readIds.has(n.notifyid)).length;
+    return notifications.filter((n) => !readIds.has(n.notifyid) && n.lifecycle !== "intermediate").length;
 });
 
 export function markAgentNotificationRead(notifyId: string): void {
@@ -231,12 +237,19 @@ export function setupAgentNotifySubscription(): void {
 
             if (data.clearall) {
                 globalStore.set(agentNotificationsAtom, []);
+                globalStore.set(agentInProgressAtom, new Map());
                 globalStore.set(agentReadIdsAtom, new Set<string>());
                 saveReadIdsToStorage(new Set<string>());
                 return;
             }
             if (data.clear && data.notifyid) {
                 globalStore.set(agentNotificationsAtom, (prev) => prev.filter((n) => n.notifyid !== data.notifyid));
+                globalStore.set(agentInProgressAtom, (prev) => {
+                    if (!prev.has(data.notifyid!)) return prev;
+                    const next = new Map(prev);
+                    next.delete(data.notifyid!);
+                    return next;
+                });
                 clearAgentNotificationReadState(data.notifyid);
                 notificationArrivalMs.delete(data.notifyid);
                 return;
@@ -245,6 +258,35 @@ export function setupAgentNotifySubscription(): void {
 
             const incoming = data.notification;
             notificationArrivalMs.set(incoming.notifyid, Date.now());
+
+            if (incoming.lifecycle === "intermediate") {
+                // Update the in-progress indicator without touching the terminal notification or read state.
+                globalStore.set(agentInProgressAtom, (prev) => {
+                    const next = new Map(prev);
+                    next.set(incoming.notifyid, incoming);
+                    return next;
+                });
+                // If no terminal notification exists yet, add a placeholder so the panel
+                // renders an item that can show the in-progress indicator.
+                const hasTerminal = globalStore.get(agentNotificationsAtom).some(
+                    (n) => n.notifyid === incoming.notifyid
+                );
+                if (!hasTerminal) {
+                    globalStore.set(agentNotificationsAtom, (prev) =>
+                        sortAgentNotifications([...prev, incoming])
+                    );
+                }
+                return;
+            }
+
+            // Terminal notification: clear any in-progress indicator for this notifyid.
+            globalStore.set(agentInProgressAtom, (prev) => {
+                if (!prev.has(incoming.notifyid)) return prev;
+                const next = new Map(prev);
+                next.delete(incoming.notifyid);
+                return next;
+            });
+
             const existing = globalStore.get(agentNotificationsAtom).find((n) => n.notifyid === incoming.notifyid);
             if (shouldResetReadState(existing, incoming)) {
                 clearAgentNotificationReadState(incoming.notifyid);

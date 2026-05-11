@@ -1540,7 +1540,7 @@ func resolveAgentNotification(
 ) (*baseds.AgentNotification, bool) {
 	data.Lifecycle = normalizeAgentNotificationLifecycle(data.Lifecycle)
 	if data.Lifecycle == agentNotificationLifecycleIntermediate {
-		return nil, true
+		return &data, true
 	}
 	data = finalizeAgentNotification(data, pending, hasPending)
 	if data.Status == "completion" && hasExisting {
@@ -1588,9 +1588,9 @@ func (ws *WshServer) AgentNotifyCommand(ctx context.Context, data baseds.AgentNo
 	resolved, storePending := resolveAgentNotification(data, existing, hasExisting, pending, hasPending, shellNotificationThresholdMs)
 	if storePending {
 		wcore.SetPendingAgentNotification(data)
-		return nil
+	} else {
+		wcore.ClearPendingAgentNotification(data.NotifyId)
 	}
-	wcore.ClearPendingAgentNotification(data.NotifyId)
 	if resolved == nil {
 		return nil
 	}

@@ -37,7 +37,9 @@ Supported agents:
 
 Supported hook types (claude):
   stop          Agent turn completed — reads transcript and sends a completion notification
+  pretooluse    Before each tool use — sends an intermediate progress notification
   notification  Agent notification or question hook
+  terminate     Call on Claude session exit to clear the notification badge
 
 Supported hook types (opencode):
   event         Process a single opencode event JSON from stdin
@@ -68,14 +70,18 @@ var agentHookClaudeCmd = &cobra.Command{
 			return agentHookClaudeStopRun(cmd, args)
 		case "stopfailure":
 			return agentHookClaudeStopFailureRun(cmd, args)
+		case "pretooluse":
+			return agentHookClaudePreToolUseRun(cmd, args)
 		case "posttooluse":
 			return agentHookClaudePostToolUseRun(cmd, args)
 		case "notification":
 			return agentHookClaudeNotificationRun(cmd, args)
 		case "sessionstart":
 			return agentHookClaudeSessionStartRun(cmd, args)
+		case "terminate":
+			return agentHookClaudeTerminateRun(cmd, args)
 		default:
-			return fmt.Errorf("unsupported hook type %q (supported: stop, stopfailure, posttooluse, notification, sessionstart)", args[0])
+			return fmt.Errorf("unsupported hook type %q (supported: stop, stopfailure, pretooluse, posttooluse, notification, sessionstart, terminate)", args[0])
 		}
 	},
 	PreRunE: preRunSetupRpcClient,
@@ -803,15 +809,29 @@ func agentHookClaudeSessionStartRun(cmd *cobra.Command, args []string) (rtnErr e
 	switch hookInput.Source {
 	case "startup":
 		clearFrameTextForBlock()
+		_ = sendClaudeHookNotificationWithTopic("Ready", cwd, "completion", "", "", extractClaudeSessionName(transcriptPath), false)
 	case "clear":
 		clearFrameTextForBlock()
 		_ = sendClaudeHookNotificationWithTopic("Cleared", cwd, "info", "", "", "", false)
 	case "resume":
 		setSessionTopicForBlock(cwd, extractClaudeSessionName(transcriptPath))
+		_ = sendClaudeHookNotificationWithTopic("Ready", cwd, "completion", "", "", extractClaudeSessionName(transcriptPath), false)
 	}
 	// "compact" or unrecognized: leave existing frame:text in place
 
 	return nil
+}
+
+func agentHookClaudeTerminateRun(cmd *cobra.Command, args []string) (rtnErr error) {
+	defer func() {
+		sendActivity("agenthook-claude-terminate", rtnErr == nil)
+	}()
+
+	oref, _ := resolveBlockArg()
+	if oref == nil {
+		return nil
+	}
+	return clearHookNotification(oref.String())
 }
 
 func agentHookClaudeStopFailureRun(cmd *cobra.Command, args []string) (rtnErr error) {
@@ -852,6 +872,73 @@ func agentHookClaudeStopFailureRun(cmd *cobra.Command, args []string) (rtnErr er
 	setSessionTopicForBlock(cwd, topic)
 
 	return nil
+}
+
+func extractToolProgressMessage(toolName string, toolInput json.RawMessage) string {
+	if toolName == "" {
+		return "working"
+	}
+	var fields map[string]json.RawMessage
+	if len(toolInput) == 0 || json.Unmarshal(toolInput, &fields) != nil {
+		return toolName
+	}
+	extractStr := func(key string) string {
+		raw, ok := fields[key]
+		if !ok {
+			return ""
+		}
+		var s string
+		if json.Unmarshal(raw, &s) != nil {
+			return ""
+		}
+		return strings.TrimSpace(s)
+	}
+	var detail string
+	switch strings.ToLower(toolName) {
+	case "bash":
+		if cmd := extractStr("command"); cmd != "" {
+			detail = strings.Join(strings.Fields(cmd), " ")
+		}
+	case "read", "write", "edit", "multiedit", "notebookread", "notebookedit":
+		detail = extractStr("file_path")
+	case "glob":
+		detail = extractStr("pattern")
+	case "grep":
+		pattern := extractStr("pattern")
+		path := extractStr("path")
+		if pattern != "" && path != "" {
+			detail = pattern + " in " + path
+		} else {
+			detail = pattern
+		}
+	case "ls":
+		detail = extractStr("path")
+	case "websearch":
+		detail = extractStr("query")
+	case "webfetch":
+		detail = extractStr("url")
+	case "task":
+		detail = extractStr("description")
+	}
+	if detail == "" {
+		return toolName
+	}
+	return toolName + ": " + truncate(detail, 80)
+}
+
+func agentHookClaudePreToolUseRun(cmd *cobra.Command, args []string) (rtnErr error) {
+	defer func() {
+		sendActivity("agenthook-claude-pretooluse", rtnErr == nil)
+	}()
+
+	hookInput, cwd, err := readClaudeHookInput()
+	if err != nil {
+		return err
+	}
+
+	message := extractToolProgressMessage(hookInput.ToolName, hookInput.ToolInput)
+
+	return sendHookNotificationForAgentWithNotifyIDLifecycle(message, cwd, "info", "claude", "", agentLifecycleIntermediate)
 }
 
 func agentHookClaudePostToolUseRun(cmd *cobra.Command, args []string) (rtnErr error) {

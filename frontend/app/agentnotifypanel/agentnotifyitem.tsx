@@ -1,7 +1,7 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-import { clearAgentNotification } from "@/app/store/agentnotify";
+import { agentInProgressAtom, clearAgentNotification } from "@/app/store/agentnotify";
 import { getTabMetaKeyAtom } from "@/app/store/global";
 import { cn } from "@/util/util";
 import { useAtomValue } from "jotai";
@@ -35,6 +35,9 @@ export const AgentNotifyItem = memo(({ notification, isRead, onNavigate, getStat
     const isQuestion = notification.status === "question";
     const isError = notification.status === "error";
     const isShellCompletion = notification.agent === "shell" && isCompletion;
+
+    const inProgressMap = useAtomValue(agentInProgressAtom);
+    const inProgress = inProgressMap.get(notification.notifyid);
 
     const tabFlagColor = useAtomValue(getTabMetaKeyAtom(notification.tabid ?? "", "tab:flagcolor"));
     const flagColor = tabFlagColor ? `color-mix(in srgb, ${tabFlagColor} 60%, white)` : "#ffffff";
@@ -124,14 +127,23 @@ export const AgentNotifyItem = memo(({ notification, isRead, onNavigate, getStat
                             )}
                         </div>
                     )}
-                    <div className="line-clamp-7">
-                        {notification.timestamp > 0 && (
-                            <span className={cn("mr-1.5 font-mono", isRead ? "text-secondary/65" : "text-white/65")}>
-                                {formatTime(notification.timestamp)}
+                    {inProgress ? (
+                        <div className="flex items-center gap-1">
+                            <span className="animate-pulse text-orange-400 shrink-0" style={{ fontSize: "11px" }}>●</span>
+                            <span className={cn("text-[10px] truncate", isRead ? "text-secondary/80" : "text-white/80")}>
+                                {inProgress.message}
                             </span>
-                        )}
-                        {notification.message}
-                    </div>
+                        </div>
+                    ) : (
+                        <div className="line-clamp-7">
+                            {notification.timestamp > 0 && (
+                                <span className={cn("mr-1.5 font-mono", isRead ? "text-secondary/65" : "text-white/65")}>
+                                    {formatTime(notification.timestamp)}
+                                </span>
+                            )}
+                            {notification.message}
+                        </div>
+                    )}
                 </div>
                 {/* Dismiss button — visible on hover */}
                 <button
