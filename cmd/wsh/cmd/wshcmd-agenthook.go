@@ -80,8 +80,10 @@ var agentHookClaudeCmd = &cobra.Command{
 			return agentHookClaudeSessionStartRun(cmd, args)
 		case "terminate":
 			return agentHookClaudeTerminateRun(cmd, args)
+		case "userpromptsubmit":
+			return agentHookClaudeUserPromptSubmitRun(cmd, args)
 		default:
-			return fmt.Errorf("unsupported hook type %q (supported: stop, stopfailure, pretooluse, posttooluse, notification, sessionstart, terminate)", args[0])
+			return fmt.Errorf("unsupported hook type %q (supported: stop, stopfailure, pretooluse, posttooluse, notification, sessionstart, terminate, userpromptsubmit)", args[0])
 		}
 	},
 	PreRunE: preRunSetupRpcClient,
@@ -521,8 +523,11 @@ func sendHookNotificationForAgentWithNotifyIDLifecycle(message, cwd, status, age
 		workDir = mainRepo
 		branch = runGitCmd(mainRepo, "branch", "--show-current")
 	}
-	if homeDir := os.Getenv("HOME"); homeDir != "" && strings.HasPrefix(workDir, homeDir+"/") {
-		workDir = "~/" + workDir[len(homeDir)+1:]
+	if homeDir := os.Getenv("HOME"); homeDir != "" {
+		if strings.HasPrefix(workDir, homeDir+"/") {
+			workDir = "~/" + workDir[len(homeDir)+1:]
+		}
+		message = strings.ReplaceAll(message, homeDir+"/", "~/")
 	}
 
 	oref, _ := resolveBlockArg()
@@ -671,8 +676,11 @@ func sendClaudeHookNotificationWithTopic(message, cwd, status, notifyId, lifecyc
 		workDir = mainRepo
 		branch = runGitCmd(mainRepo, "branch", "--show-current")
 	}
-	if homeDir := os.Getenv("HOME"); homeDir != "" && strings.HasPrefix(workDir, homeDir+"/") {
-		workDir = "~/" + workDir[len(homeDir)+1:]
+	if homeDir := os.Getenv("HOME"); homeDir != "" {
+		if strings.HasPrefix(workDir, homeDir+"/") {
+			workDir = "~/" + workDir[len(homeDir)+1:]
+		}
+		message = strings.ReplaceAll(message, homeDir+"/", "~/")
 	}
 
 	oref, _ := resolveBlockArg()
@@ -789,6 +797,17 @@ func agentHookClaudeStopRun(cmd *cobra.Command, args []string) (rtnErr error) {
 	setSessionTopicForBlock(cwd, topic)
 
 	return nil
+}
+
+func agentHookClaudeUserPromptSubmitRun(cmd *cobra.Command, args []string) (rtnErr error) {
+	defer func() {
+		sendActivity("agenthook-claude-userpromptsubmit", rtnErr == nil)
+	}()
+	_, cwd, err := readClaudeHookInput()
+	if err != nil {
+		return err
+	}
+	return sendClaudeHookNotificationWithTopic("Thinking…", cwd, "info", "", agentLifecycleIntermediate, "", false)
 }
 
 func agentHookClaudeSessionStartRun(cmd *cobra.Command, args []string) (rtnErr error) {

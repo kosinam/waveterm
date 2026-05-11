@@ -1,11 +1,11 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-import { agentInProgressAtom, clearAgentNotification } from "@/app/store/agentnotify";
+import { agentInProgressAtom, clearAgentNotification, getInProgressStartMs } from "@/app/store/agentnotify";
 import { getTabMetaKeyAtom } from "@/app/store/global";
 import { cn } from "@/util/util";
 import { useAtomValue } from "jotai";
-import { memo, useCallback } from "react";
+import { memo, useCallback, useEffect, useState } from "react";
 
 const folderBlue = "#5BAAFF";
 const folderBlueText = "color-mix(in srgb, #5BAAFF 60%, white)";
@@ -14,6 +14,13 @@ function formatTime(timestampMs: number): string {
     if (!timestampMs) return "";
     const d = new Date(timestampMs);
     return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+
+function formatElapsed(seconds: number): string {
+    if (seconds < 60) return `${seconds}s`;
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    return `${m}m ${s}s`;
 }
 
 function shortenBranch(branch: string): string {
@@ -38,6 +45,20 @@ export const AgentNotifyItem = memo(({ notification, isRead, onNavigate, getStat
 
     const inProgressMap = useAtomValue(agentInProgressAtom);
     const inProgress = inProgressMap.get(notification.notifyid);
+
+    const isInProgress = inProgress != null;
+    const [elapsed, setElapsed] = useState(0);
+    useEffect(() => {
+        if (!isInProgress) {
+            setElapsed(0);
+            return;
+        }
+        const startMs = getInProgressStartMs(notification.notifyid);
+        const update = () => setElapsed(Math.floor((Date.now() - startMs) / 1000));
+        update();
+        const id = setInterval(update, 1000);
+        return () => clearInterval(id);
+    }, [isInProgress, notification.notifyid]);
 
     const tabFlagColor = useAtomValue(getTabMetaKeyAtom(notification.tabid ?? "", "tab:flagcolor"));
     const flagColor = tabFlagColor ? `color-mix(in srgb, ${tabFlagColor} 60%, white)` : "#ffffff";
@@ -128,11 +149,12 @@ export const AgentNotifyItem = memo(({ notification, isRead, onNavigate, getStat
                         </div>
                     )}
                     {inProgress ? (
-                        <div className="flex items-center gap-1">
-                            <span className="text-green-400 shrink-0" style={{ fontSize: "11px", animation: "agent-glow 1.2s ease-in-out infinite" }}>●</span>
-                            <span className={cn("text-[10px] truncate", isRead ? "text-secondary/80" : "text-white/80")}>
-                                {inProgress.message}
+                        <div className={cn("text-[10px] line-clamp-5", isRead ? "text-secondary/80" : "text-white/80")}>
+                            <span className="text-green-400 mr-0.5" style={{ fontSize: "11px", animation: "agent-glow 1.2s ease-in-out infinite" }}>●</span>
+                            <span className={cn("font-mono mr-1.5", elapsed >= 600 ? "text-red-400" : elapsed >= 300 ? "text-yellow-400" : isRead ? "text-secondary/65" : "text-white/65")}>
+                                {formatElapsed(elapsed)}
                             </span>
+                            {inProgress.message}
                         </div>
                     ) : (
                         <div className="line-clamp-5">

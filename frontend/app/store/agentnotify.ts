@@ -101,6 +101,14 @@ export const agentInProgressAtom: PrimitiveAtom<Map<string, AgentNotification>> 
     new Map<string, AgentNotification>()
 );
 
+// Tracks when in-progress first started for each notifyid (ms since epoch).
+// Module-level so it persists across re-renders without triggering atom updates.
+const inProgressStartMs = new Map<string, number>();
+
+export function getInProgressStartMs(notifyId: string): number {
+    return inProgressStartMs.get(notifyId) ?? Date.now();
+}
+
 // Derived count of unread notifications.
 export const agentUnreadCountAtom = atom((get) => {
     const notifications = get(agentNotificationsAtom);
@@ -236,6 +244,7 @@ export function setupAgentNotifySubscription(): void {
             if (data == null) return;
 
             if (data.clearall) {
+                inProgressStartMs.clear();
                 globalStore.set(agentNotificationsAtom, []);
                 globalStore.set(agentInProgressAtom, new Map());
                 globalStore.set(agentReadIdsAtom, new Set<string>());
@@ -243,6 +252,7 @@ export function setupAgentNotifySubscription(): void {
                 return;
             }
             if (data.clear && data.notifyid) {
+                inProgressStartMs.delete(data.notifyid);
                 globalStore.set(agentNotificationsAtom, (prev) => prev.filter((n) => n.notifyid !== data.notifyid));
                 globalStore.set(agentInProgressAtom, (prev) => {
                     if (!prev.has(data.notifyid!)) return prev;
@@ -260,6 +270,10 @@ export function setupAgentNotifySubscription(): void {
             notificationArrivalMs.set(incoming.notifyid, Date.now());
 
             if (incoming.lifecycle === "intermediate") {
+                // Record start time only on the first intermediate for this notifyid.
+                if (!inProgressStartMs.has(incoming.notifyid)) {
+                    inProgressStartMs.set(incoming.notifyid, Date.now());
+                }
                 // Update the in-progress indicator without touching the terminal notification or read state.
                 globalStore.set(agentInProgressAtom, (prev) => {
                     const next = new Map(prev);
@@ -280,6 +294,7 @@ export function setupAgentNotifySubscription(): void {
             }
 
             // Terminal notification: clear any in-progress indicator for this notifyid.
+            inProgressStartMs.delete(incoming.notifyid);
             globalStore.set(agentInProgressAtom, (prev) => {
                 if (!prev.has(incoming.notifyid)) return prev;
                 const next = new Map(prev);
