@@ -439,7 +439,8 @@ async function handleSplitHorizontal(position: "before" | "after") {
         return;
     }
     const blockDef = getDefaultNewBlockDef();
-    await createBlockSplitHorizontally(blockDef, focusedNode.data.blockId, position);
+    const newBlockId = await createBlockSplitHorizontally(blockDef, focusedNode.data.blockId, position);
+    setTimeout(() => refocusNode(newBlockId), 0);
 }
 
 async function handleSplitVertical(position: "before" | "after") {
@@ -449,7 +450,8 @@ async function handleSplitVertical(position: "before" | "after") {
         return;
     }
     const blockDef = getDefaultNewBlockDef();
-    await createBlockSplitVertically(blockDef, focusedNode.data.blockId, position);
+    const newBlockId = await createBlockSplitVertically(blockDef, focusedNode.data.blockId, position);
+    setTimeout(() => refocusNode(newBlockId), 0);
 }
 
 function getWebBlockDef(): BlockDef {
@@ -485,11 +487,13 @@ async function handleSplitFiles(position: "before" | "after", direction: "horizo
         return;
     }
     const blockDef = getFileBlockDef();
+    let newBlockId: string;
     if (direction === "horizontal") {
-        await createBlockSplitHorizontally(blockDef, focusedNode.data.blockId, position);
+        newBlockId = await createBlockSplitHorizontally(blockDef, focusedNode.data.blockId, position);
     } else {
-        await createBlockSplitVertically(blockDef, focusedNode.data.blockId, position);
+        newBlockId = await createBlockSplitVertically(blockDef, focusedNode.data.blockId, position);
     }
+    setTimeout(() => refocusNode(newBlockId), 0);
 }
 
 async function handleSplitHorizontalWeb(position: "before" | "after") {
@@ -498,7 +502,8 @@ async function handleSplitHorizontalWeb(position: "before" | "after") {
     if (focusedNode == null) {
         return;
     }
-    await createBlockSplitHorizontally(getWebBlockDef(), focusedNode.data.blockId, position);
+    const newBlockId = await createBlockSplitHorizontally(getWebBlockDef(), focusedNode.data.blockId, position);
+    setTimeout(() => refocusNode(newBlockId), 0);
 }
 
 async function handleSplitVerticalWeb(position: "before" | "after") {
@@ -507,7 +512,8 @@ async function handleSplitVerticalWeb(position: "before" | "after") {
     if (focusedNode == null) {
         return;
     }
-    await createBlockSplitVertically(getWebBlockDef(), focusedNode.data.blockId, position);
+    const newBlockId = await createBlockSplitVertically(getWebBlockDef(), focusedNode.data.blockId, position);
+    setTimeout(() => refocusNode(newBlockId), 0);
 }
 
 function sendWshCommand(command: string) {
@@ -866,6 +872,219 @@ function registerGlobalKeys() {
         WorkspaceLayoutModel.getInstance().setAIPanelVisible(!currentVisible);
         return true;
     });
+    // Alt (Option) shortcuts — direct alternatives to chord prefix shortcuts.
+    // c{} code notation is required because macOS Option changes the produced character
+    // (e.g. Option+z → Ω), so matching on event.key would never fire.
+    globalKeyMap.set("Alt:Shift:c{Digit5}", () => {
+        // % — split pane right
+        handleSplitHorizontal("after");
+        return true;
+    });
+    globalKeyMap.set("Alt:Shift:c{Quote}", () => {
+        // " — split pane below
+        handleSplitVertical("after");
+        return true;
+    });
+    globalKeyMap.set("Alt:Shift:c{KeyN}", () => {
+        // N — new workspace
+        fireAndForget(async () => {
+            const now = new Date();
+            const pad = (n: number) => String(n).padStart(2, "0");
+            const name = `${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
+            const newWsId = await WorkspaceService.CreateWorkspace(name, "", "", true);
+            if (newWsId) getApi().switchWorkspace(newWsId);
+        });
+        return true;
+    });
+    globalKeyMap.set("Alt:Shift:c{KeyX}", () => {
+        // X — delete workspace
+        const workspaceId = globalStore.get(atoms.workspaceId);
+        if (workspaceId) getApi().deleteWorkspace(workspaceId);
+        return true;
+    });
+    globalKeyMap.set("Alt:c{KeyS}", () => {
+        // s — workspace picker
+        modalsModel.pushModal("WorkspacePickerModal");
+        return true;
+    });
+    globalKeyMap.set("Alt:Shift:c{Digit4}", () => {
+        // $ — rename workspace
+        globalStore.set(openWorkspaceEditorForCurrentAtom, true);
+        return true;
+    });
+    for (let idx = 1; idx <= 9; idx++) {
+        const wsIdx = idx;
+        globalKeyMap.set(`Alt:c{Digit${wsIdx}}`, () => {
+            switchWorkspaceAbs(wsIdx);
+            return true;
+        });
+    }
+    globalKeyMap.set("Alt:Shift:c{Digit9}", () => {
+        // ( — previous workspace
+        switchWorkspaceByOffset(-1);
+        return true;
+    });
+    globalKeyMap.set("Alt:Shift:c{Digit0}", () => {
+        // ) — next workspace
+        switchWorkspaceByOffset(1);
+        return true;
+    });
+    globalKeyMap.set("Alt:ArrowUp", () => {
+        switchBlockInDirection(NavigateDirection.Up);
+        return true;
+    });
+    globalKeyMap.set("Alt:ArrowDown", () => {
+        switchBlockInDirection(NavigateDirection.Down);
+        return true;
+    });
+    globalKeyMap.set("Alt:ArrowLeft", () => {
+        switchBlockInDirection(NavigateDirection.Left);
+        return true;
+    });
+    globalKeyMap.set("Alt:ArrowRight", () => {
+        switchBlockInDirection(NavigateDirection.Right);
+        return true;
+    });
+    globalKeyMap.set("Alt:c{KeyZ}", () => {
+        // z — zoom/magnify pane
+        const layoutModel = getLayoutModelForStaticTab();
+        const focusedNode = globalStore.get(layoutModel.focusedNode);
+        if (focusedNode != null) {
+            layoutModel.magnifyNodeToggle(focusedNode.id);
+        }
+        return true;
+    });
+    globalKeyMap.set("Alt:c{KeyX}", () => {
+        // x — close pane
+        genericClose();
+        return true;
+    });
+    globalKeyMap.set("Alt:Shift:c{BracketLeft}", () => {
+        // { — swap pane with previous
+        swapPaneByOffset(-1);
+        return true;
+    });
+    globalKeyMap.set("Alt:Shift:c{BracketRight}", () => {
+        // } — swap pane with next
+        swapPaneByOffset(1);
+        return true;
+    });
+    globalKeyMap.set("Alt:c{KeyF}", () => {
+        // f — file browser pane right
+        handleSplitFiles("after", "horizontal");
+        return true;
+    });
+    globalKeyMap.set("Alt:Shift:c{KeyF}", () => {
+        // F — file browser pane below
+        handleSplitFiles("after", "vertical");
+        return true;
+    });
+    globalKeyMap.set("Alt:c{KeyW}", () => {
+        // w — toggle widget panel
+        const current = globalStore.get(getSettingsKeyAtom("app:hidewidgetpanel"));
+        fireAndForget(() => RpcApi.SetConfigCommand(TabRpcClient, { "app:hidewidgetpanel": !current }));
+        return true;
+    });
+    globalKeyMap.set("Alt:c{KeyB}", () => {
+        // b — browser pane right
+        handleSplitHorizontalWeb("after");
+        return true;
+    });
+    globalKeyMap.set("Alt:Shift:c{KeyB}", () => {
+        // B — browser pane below
+        handleSplitVerticalWeb("after");
+        return true;
+    });
+    globalKeyMap.set("Alt:c{KeyI}", () => {
+        // i — sysinfo (CPU + Mem) pane right
+        fireAndForget(async () => {
+            const layoutModel = getLayoutModelForStaticTab();
+            const focusedNode = globalStore.get(layoutModel.focusedNode);
+            if (focusedNode == null) return;
+            const newBlockId = await createBlockSplitHorizontally(
+                { meta: { view: "sysinfo", "sysinfo:type": "CPU + Mem" } },
+                focusedNode.data.blockId,
+                "after"
+            );
+            setTimeout(() => refocusNode(newBlockId), 0);
+        });
+        return true;
+    });
+    globalKeyMap.set("Alt:Shift:c{Slash}", () => {
+        // ? — prompt for URL and open in browser pane
+        const layoutModel = getLayoutModelForStaticTab();
+        const focusedNode = globalStore.get(layoutModel.focusedNode);
+        if (focusedNode == null) return true;
+        const anchorBlockId = focusedNode.data.blockId;
+        globalStore.set(bottomBarRequestAtom, {
+            prompt: "open url:",
+            onSubmit: (url: string) => {
+                fireAndForget(() =>
+                    createBlockSplitHorizontally({ meta: { view: "web", url } }, anchorBlockId, "after")
+                );
+            },
+        });
+        return true;
+    });
+    globalKeyMap.set("Alt:Shift:c{Semicolon}", () => {
+        // : — open bottom bar for wsh command entry
+        globalStore.set(bottomBarRequestAtom, {
+            prompt: "wsh:",
+            onSubmit: (command: string) => sendWshCommand(command),
+        });
+        return true;
+    });
+    globalKeyMap.set("Alt:c{Semicolon}", () => {
+        // ; — return to previously focused pane
+        fireAndForget(() => navigateToPreviousFocus());
+        return true;
+    });
+    globalKeyMap.set("Alt:c{KeyA}", () => {
+        // a — toggle Wave AI panel
+        const currentVisible = WorkspaceLayoutModel.getInstance().getAIPanelVisible();
+        WorkspaceLayoutModel.getInstance().setAIPanelVisible(!currentVisible);
+        return true;
+    });
+    globalKeyMap.set("Alt:Shift:c{KeyI}", () => {
+        // I — toggle Agent Notify panel
+        const model = WorkspaceLayoutModel.getInstance();
+        model.setAgentNotifyPanelVisible(!model.getAgentNotifyPanelVisible());
+        return true;
+    });
+    globalKeyMap.set("Alt:c{KeyU}", () => {
+        // u — jump to oldest unread agent notification
+        const notifications = globalStore.get(agentNotificationsAtom);
+        const readIds = globalStore.get(agentReadIdsAtom);
+        const unreadNotifications = notifications.filter((n) => !readIds.has(n.notifyid));
+        if (unreadNotifications.length === 0) {
+            lastUnreadNotificationJumpId = null;
+            return true;
+        }
+        const lastUnreadIdx = unreadNotifications.findIndex((n) => n.notifyid === lastUnreadNotificationJumpId);
+        const nextUnreadIdx = lastUnreadIdx >= 0 ? (lastUnreadIdx + 1) % unreadNotifications.length : 0;
+        const unread = unreadNotifications[nextUnreadIdx];
+        if (!unread) return true;
+        lastUnreadNotificationJumpId = unread.notifyid;
+        const model = WorkspaceLayoutModel.getInstance();
+        if (!model.getAgentNotifyPanelVisible()) {
+            model.setAgentNotifyPanelVisible(true);
+        }
+        fireAndForget(() => navigateToNotification(unread, { markRead: false }));
+        if (pendingAutoReadTimer !== null) {
+            clearTimeout(pendingAutoReadTimer);
+            pendingAutoReadTimer = null;
+        }
+        if (unread.status === "completion" || unread.status === "error") {
+            const notifyId = unread.notifyid;
+            pendingAutoReadTimer = setTimeout(() => {
+                pendingAutoReadTimer = null;
+                const m = WorkspaceLayoutModel.getInstance();
+                if (!m.getAgentNotifyPanelVisible()) return;
+                markAgentNotificationRead(notifyId);
+            }, 5000);
+        }
+        return true;
+    });
     const allKeys = Array.from(globalKeyMap.keys());
     // special case keys, handled by web view
     allKeys.push("Cmd:l", "Cmd:r", "Cmd:ArrowRight", "Cmd:ArrowLeft", "Cmd:o");
@@ -1032,11 +1251,12 @@ function registerGlobalKeys() {
             const layoutModel = getLayoutModelForStaticTab();
             const focusedNode = globalStore.get(layoutModel.focusedNode);
             if (focusedNode == null) return;
-            await createBlockSplitHorizontally(
+            const newBlockId = await createBlockSplitHorizontally(
                 { meta: { view: "sysinfo", "sysinfo:type": "CPU + Mem" } },
                 focusedNode.data.blockId,
                 "after"
             );
+            setTimeout(() => refocusNode(newBlockId), 0);
         });
         return true;
     });
