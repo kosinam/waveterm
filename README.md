@@ -237,44 +237,33 @@ What each hook does:
 
 ---
 
-## tmux-style Ctrl-w Chord Keybindings
+## tmux-style Alt Keybindings
 
-A configurable prefix chord is layered on top of WaveTerm's existing keybindings. The default prefix is **`Ctrl-w`** — chosen to avoid conflict with nested tmux sessions, which use `Ctrl-B` by default (WaveTerm would otherwise intercept `Ctrl-B` before tmux sees it).
-
-To change the prefix, set `app:chordprefix` in your WaveTerm `settings.json` and restart. For example, to use the tmux default:
-
-```json
-{ "app:chordprefix": "Ctrl:b" }
-```
-
-After pressing the prefix key, a short window accepts the following keys:
+Single-key shortcuts using the `Alt` (Option on macOS) modifier, designed to mirror tmux's key assignments. The same letters and symbols as tmux are used — `%` splits right, `"` splits below, `x` closes, `{`/`}` swap panes — so muscle memory transfers naturally.
 
 | Key | Action |
 |-----|--------|
-| `%` / `"` | Split pane right / below |
-| `c` | New tab (tmux window equivalent) |
-| `n` / `p` | Next / previous tab |
-| `1`–`9` | Switch workspace by number |
-| `(` / `)` | Previous / next workspace |
-| `←→↑↓` | Navigate panes |
-| `z` | Zoom / magnify pane |
-| `x` | Close pane |
-| `b` / `B` | New browser pane right / below |
-| `f` / `F` | New file browser pane right / below |
-| `w` | Toggle widget panel |
-| `a` | Toggle Wave AI panel |
-| `I` | Toggle Agent notification panel |
-| `U` | Jump to latest unread agent notification |
-| `;` | Return to the previously focused pane or Wave AI, across tabs/workspaces |
-| `N` / `$` / `X` | New / rename / delete workspace |
-| `s` | Open workspace picker |
-| `{` / `}` | Swap panes left / right |
-| `?` | Open URL prompt in focused browser pane |
-| `:` | Enter `wsh` command |
+| `Alt+Shift+%` | Split pane right |
+| `Alt+Shift+"` | Split pane below |
+| `Alt+X` | Close pane |
+| `Alt+Shift+{` / `Alt+Shift+}` | Swap pane with previous / next |
+| `Alt+F` / `Alt+Shift+F` | New file browser pane right / below |
+| `Alt+B` / `Alt+Shift+B` | New browser pane right / below |
+| `Alt+I` | New sysinfo (CPU + Mem) pane right |
+| `Alt+W` | Toggle widget panel |
+| `Alt+A` | Toggle Wave AI panel |
+| `Alt+Shift+I` | Toggle Agent notification panel |
+| `Alt+U` | Jump to oldest unread agent notification |
+| `Alt+;` | Return to previously focused pane (across tabs/workspaces) |
+| `Alt+Shift+N` | New workspace |
+| `Alt+Shift+?` | Open URL prompt in a new browser pane |
+| `Alt+Shift+:` | Enter `wsh` command via bottom bar |
 
-A **BottomBar** input component appears for prompted commands (`:`, `?`). A **WorkspacePickerModal** (`s`) lists all workspaces for fast switching.
+A **BottomBar** input appears for prompted commands (`Alt+Shift+:`, `Alt+Shift+?`).
 
-This makes `Ctrl-w U` followed by `Ctrl-w ;` a quick round-trip for checking an unread notification and then returning to where you were.
+> **macOS note:** Option key combinations may produce special characters (e.g. Option+Z → Ω). WaveTerm matches on the physical key code rather than the produced character, so these shortcuts work regardless.
+
+This makes `Alt+U` followed by `Alt+;` a quick round-trip for checking an unread notification and then returning to where you were.
 
 The focused block border and resize handles now use a dedicated `--block-border-color` CSS variable (previously shared with `accent-color`), keeping the focus indicator visually distinct.
 
@@ -290,11 +279,11 @@ The focused block border and resize handles now use a dedicated `--block-border-
 - **Sysinfo widget: disk usage and network throughput** — the system-info pane now shows disk I/O and network throughput alongside CPU and memory.
 - **Auto-theme for remote connections** — preview and sysinfo blocks automatically adopt the remote host's colour theme when connected over SSH.
 - Opening a new browser block automatically focuses the URL input field so you can type an address immediately without an extra click.
-- A new `app:hidewidgetpanel` setting (also toggleable from the tab bar context menu or via Ctrl-w w) lets you permanently hide the right-side widget panel:
+- A new `app:hidewidgetpanel` setting (also toggleable from the tab bar context menu or via `Alt+W`) lets you permanently hide the right-side widget panel:
   ```json
   { "app:hidewidgetpanel": true }
   ```
-- tmux-like workspace picker via Ctrl-w s
+- tmux-like workspace picker (`Alt+Shift+N` to create, workspace switcher available from the tab bar)
 - The focused block border color is configurable. Default is green; to use something like xmonad-style red:
   ```json
   { "app:blockbordercolor": "rgb(160, 30, 30)" }
