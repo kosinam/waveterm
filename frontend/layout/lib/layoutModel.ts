@@ -682,9 +682,15 @@ export class LayoutModel {
                 break;
             case LayoutTreeActionType.SplitHorizontal:
                 splitHorizontal(this.treeState, action as LayoutTreeSplitHorizontalAction);
+                if ((action as LayoutTreeSplitHorizontalAction).focused) {
+                    FocusManager.getInstance().requestNodeFocus();
+                }
                 break;
             case LayoutTreeActionType.SplitVertical:
                 splitVertical(this.treeState, action as LayoutTreeSplitVerticalAction);
+                if ((action as LayoutTreeSplitVerticalAction).focused) {
+                    FocusManager.getInstance().requestNodeFocus();
+                }
                 break;
             default:
                 console.error("Invalid reducer action", this.treeState, action);
