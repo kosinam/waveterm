@@ -129,13 +129,13 @@ export const AgentNotifyItem = memo(({ notification, isRead, onNavigate, getStat
                     )}
                     {inProgress ? (
                         <div className="flex items-center gap-1">
-                            <span className="animate-pulse text-orange-400 shrink-0" style={{ fontSize: "11px" }}>●</span>
+                            <span className="text-green-400 shrink-0" style={{ fontSize: "11px", animation: "agent-glow 1.2s ease-in-out infinite" }}>●</span>
                             <span className={cn("text-[10px] truncate", isRead ? "text-secondary/80" : "text-white/80")}>
                                 {inProgress.message}
                             </span>
                         </div>
                     ) : (
-                        <div className="line-clamp-7">
+                        <div className="line-clamp-5">
                             {notification.timestamp > 0 && (
                                 <span className={cn("mr-1.5 font-mono", isRead ? "text-secondary/65" : "text-white/65")}>
                                     {formatTime(notification.timestamp)}

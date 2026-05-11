@@ -121,3 +121,8 @@ svg [aria-label="tip"] g path {
         opacity: 0;
     }
 }
+
+@keyframes agent-glow {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.2; }
+}
