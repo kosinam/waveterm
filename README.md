@@ -120,6 +120,13 @@ wsh agentnotify "Message text" \
           { "type": "command", "command": "wsh agenthook claude posttooluse" }
         ]
       }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          { "type": "command", "command": "wsh agenthook claude userpromptsubmit" }
+        ]
+      }
     ]
   }
 }
@@ -135,7 +142,8 @@ claude() { command claude "$@"; wsh agenthook claude terminate }
 
 New hooks since initial release:
 - **`SessionStart`** — posts a green "Ready" badge when Claude starts or resumes a session.
-- **`PreToolUse` (no matcher)** — sends a live intermediate update showing the tool name and its key argument before each tool call, powering the pulsing orange dot in the badge.
+- **`UserPromptSubmit`** — sends a "Thinking…" intermediate immediately when you submit a prompt, before the first tool call, so the progress indicator appears without delay.
+- **`PreToolUse` (no matcher)** — sends a live intermediate update showing the tool name and its key argument before each tool call, powering the pulsing green dot in the badge.
 - **`terminate`** (via shell wrapper) — clears the badge when the Claude process exits.
 
 ---
