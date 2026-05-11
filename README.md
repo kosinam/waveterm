@@ -14,7 +14,8 @@ A collapsible panel on the left side of the workspace aggregates notifications f
 ### Panel behaviour
 
 - Notifications carry a **status-coloured unread background**: green (completion), yellow (question), red (error), blue (info).
-- Each entry shows an `HH:MM` timestamp, the agent name, and optional branch / workdir metadata.
+- Each entry shows the **tab name** (tinted with the tab's flag colour), **home-relative workdir**, **git branch**, and **worktree branch** when in a linked worktree.
+- While an agent is actively running tools the message area shows a **pulsing orange dot** with the current tool and its key argument (e.g. `Bash: ls -la`, `Read: ~/project/foo.go`). The final message appears when the turn completes.
 - Clicking a notification **focuses the originating block** and switches workspace if needed. A stored `pendingBlockFlash` key causes the block border to double-flash when the renderer loads.
 - When a notification arrives and its block is visible in the current tab the block border **triple-flashes** to draw attention.
 - Read state is persisted to `localStorage` and synced across renderers via storage events.
@@ -72,6 +73,33 @@ wsh agentnotify "Message text" \
         ]
       }
     ],
+    "StopFailure": [
+      {
+        "hooks": [
+          { "type": "command", "command": "wsh agenthook claude stopfailure" }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          { "type": "command", "command": "wsh agenthook claude sessionstart" }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "hooks": [
+          { "type": "command", "command": "wsh agenthook claude pretooluse" }
+        ]
+      },
+      {
+        "matcher": "AskUserQuestion",
+        "hooks": [
+          { "type": "command", "command": "wsh agenthook claude notification" }
+        ]
+      }
+    ],
     "Notification": [
       {
         "matcher": "permission_prompt",
@@ -86,21 +114,6 @@ wsh agentnotify "Message text" \
         ]
       }
     ],
-    "PreToolUse": [
-      {
-        "matcher": "AskUserQuestion",
-        "hooks": [
-          { "type": "command", "command": "wsh agenthook claude notification" }
-        ]
-      }
-    ],
-    "StopFailure": [
-      {
-        "hooks": [
-          { "type": "command", "command": "wsh agenthook claude stopfailure" }
-        ]
-      }
-    ],
     "PostToolUseFailure": [
       {
         "hooks": [
@@ -112,7 +125,18 @@ wsh agentnotify "Message text" \
 }
 ```
 
+Also add a shell wrapper to your `~/.zshrc` so the badge is cleared when Claude exits:
+
+```zsh
+claude() { command claude "$@"; wsh agenthook claude terminate }
+```
+
 `wsh agenthook claude` reads the Claude Code hook JSON from stdin and extracts structured fields — the last assistant message for completions, question text for approval prompts, and real error messages from `PostToolUseFailure` / `StopFailure` payloads. No shell or `jq` required. It uses the originating block's ORef as a stable notify ID so each terminal pane has exactly one panel slot. Tool errors are stored as intermediate state and only surface if the turn ultimately stops in error.
+
+New hooks since initial release:
+- **`SessionStart`** — posts a green "Ready" badge when Claude starts or resumes a session.
+- **`PreToolUse` (no matcher)** — sends a live intermediate update showing the tool name and its key argument before each tool call, powering the pulsing orange dot in the badge.
+- **`terminate`** (via shell wrapper) — clears the badge when the Claude process exits.
 
 ---
 
@@ -260,8 +284,11 @@ The focused block border and resize handles now use a dedicated `--block-border-
 
 ---
 
-## Miscelaneous enhancements
+## Miscellaneous enhancements
 
+- **Vim mode in the Monaco code editor** — the built-in file / diff viewer supports vim keybindings. Toggle it from the editor toolbar.
+- **Sysinfo widget: disk usage and network throughput** — the system-info pane now shows disk I/O and network throughput alongside CPU and memory.
+- **Auto-theme for remote connections** — preview and sysinfo blocks automatically adopt the remote host's colour theme when connected over SSH.
 - Opening a new browser block automatically focuses the URL input field so you can type an address immediately without an extra click.
 - A new `app:hidewidgetpanel` setting (also toggleable from the tab bar context menu or via Ctrl-w w) lets you permanently hide the right-side widget panel:
   ```json
