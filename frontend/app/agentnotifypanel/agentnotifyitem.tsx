@@ -7,18 +7,13 @@ import { cn } from "@/util/util";
 import { useAtomValue } from "jotai";
 import { memo, useCallback } from "react";
 
+const folderBlue = "#5BAAFF";
+const folderBlueText = "color-mix(in srgb, #5BAAFF 60%, white)";
+
 function formatTime(timestampMs: number): string {
     if (!timestampMs) return "";
     const d = new Date(timestampMs);
     return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-}
-
-
-function shortenPath(path: string): string {
-    if (!path) return "";
-    const parts = path.split("/");
-    if (parts.length <= 2) return path;
-    return "…/" + parts.slice(-1)[0];
 }
 
 function shortenBranch(branch: string): string {
@@ -34,7 +29,6 @@ interface AgentNotifyItemProps {
     getStatusIcon: (status: string) => { icon: string; color: string };
 }
 
-
 export const AgentNotifyItem = memo(({ notification, isRead, onNavigate, getStatusIcon }: AgentNotifyItemProps) => {
     const { icon, color } = getStatusIcon(notification.status ?? "info");
     const isCompletion = notification.status === "completion";
@@ -43,11 +37,10 @@ export const AgentNotifyItem = memo(({ notification, isRead, onNavigate, getStat
     const isShellCompletion = notification.agent === "shell" && isCompletion;
 
     const tabFlagColor = useAtomValue(getTabMetaKeyAtom(notification.tabid ?? "", "tab:flagcolor"));
-    const workdirColor = tabFlagColor
-        ? `color-mix(in srgb, ${tabFlagColor} 60%, white)`
-        : "#ffffff";
+    const flagColor = tabFlagColor ? `color-mix(in srgb, ${tabFlagColor} 60%, white)` : "#ffffff";
 
     const topicColor = isRead ? "text-yellow-400/80" : "text-yellow-300";
+    const metaColor = isRead ? "text-secondary/70" : "text-white/75";
 
     const unreadBg = isShellCompletion
         ? "bg-blue-700/80 hover:bg-blue-700/90"
@@ -80,7 +73,6 @@ export const AgentNotifyItem = memo(({ notification, isRead, onNavigate, getStat
             onClick={handleClick}
             title="Click to navigate to this block"
         >
-            {/* Status icon + message */}
             <div className="flex items-start gap-1.5">
                 <i
                     className={cn("fa-solid shrink-0 mt-[1px] text-[11px]", icon)}
@@ -92,34 +84,44 @@ export const AgentNotifyItem = memo(({ notification, isRead, onNavigate, getStat
                             {notification.topic}
                         </div>
                     )}
-                    {(notification.workdir || notification.agent || notification.branch) && (
+                    {/* Row 1: tab name + workdir path */}
+                    {(notification.tabname || notification.workdir) && (
                         <div className="flex flex-wrap items-center gap-x-2 mb-0.5">
-                            {notification.workdir && (
-                                <span className="flex items-center gap-0.5 text-[10px] min-w-0 max-w-full font-semibold">
-                                    <i className="fa-solid fa-flag shrink-0" style={{ fontSize: "9px", color: workdirColor }} />
-                                    <span className="truncate" style={{ color: workdirColor }}>{shortenPath(notification.workdir)}</span>
+                            {notification.tabname && (
+                                <span className="flex items-center gap-1 text-[10px] font-semibold" style={{ color: flagColor }}>
+                                    <i className="fa-solid fa-flag shrink-0" style={{ fontSize: "9px" }} />
+                                    <span>{notification.tabname}</span>
                                 </span>
                             )}
+                            {notification.workdir && (
+                                <span className="flex items-center gap-1 text-[10px] min-w-0">
+                                    <i className="fa-solid fa-folder shrink-0" style={{ fontSize: "9px", color: folderBlue }} />
+                                    <span className="truncate" style={{ color: folderBlueText }}>{notification.workdir}</span>
+                                </span>
+                            )}
+                        </div>
+                    )}
+                    {/* Row 2: agent + main branch + worktree branch (worktree only when in a linked worktree) */}
+                    {(notification.agent || notification.branch || notification.worktree) && (
+                        <div className="flex flex-wrap items-center gap-x-2 mb-0.5">
                             {notification.agent && (
-                                <span className={cn("flex items-center gap-0.5 text-[10px] min-w-0", isRead ? "text-secondary/70" : "text-white/75")}>
+                                <span className={cn("flex items-center gap-0.5 text-[10px] min-w-0", metaColor)}>
                                     <i className="fa-solid fa-terminal shrink-0" style={{ fontSize: "9px" }} />
                                     <span className="truncate">{notification.agent}</span>
                                 </span>
                             )}
                             {notification.branch && (
-                                <span className={cn("flex items-center gap-0.5 text-[10px] min-w-0 max-w-full", isRead ? "text-secondary/70" : "text-white/75")}>
+                                <span className={cn("flex items-center gap-0.5 text-[10px] min-w-0", metaColor)}>
                                     <i className="fa-solid fa-code-branch shrink-0" style={{ fontSize: "9px" }} />
                                     <span className="truncate">{shortenBranch(notification.branch)}</span>
                                 </span>
                             )}
-                        </div>
-                    )}
-                    {notification.worktree && notification.worktree !== notification.workdir && (
-                        <div className="flex items-center mb-0.5">
-                            <span className="flex items-center gap-0.5 text-[10px] min-w-0 max-w-full font-semibold">
-                                <i className="fa-solid fa-code-fork shrink-0 text-secondary/70" style={{ fontSize: "9px" }} />
-                                <span className="truncate" style={{ color: workdirColor }}>{shortenPath(notification.worktree)}</span>
-                            </span>
+                            {notification.worktree && (
+                                <span className={cn("flex items-center gap-0.5 text-[10px] min-w-0", metaColor)}>
+                                    <i className="fa-solid fa-code-fork shrink-0" style={{ fontSize: "9px" }} />
+                                    <span className="truncate">{notification.worktree}</span>
+                                </span>
+                            )}
                         </div>
                     )}
                     <div className="line-clamp-7">
@@ -144,7 +146,6 @@ export const AgentNotifyItem = memo(({ notification, isRead, onNavigate, getStat
                     <i className="fa-solid fa-xmark" />
                 </button>
             </div>
-
         </div>
     );
 });

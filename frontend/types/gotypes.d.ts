@@ -97,6 +97,7 @@ declare global {
         worktree?: string;
         timestamp: number;
         workspacename?: string;
+        tabname?: string;
     };
 
     // baseds.AgentNotifyEvent

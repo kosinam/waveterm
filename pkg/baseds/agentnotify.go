@@ -18,9 +18,10 @@ type AgentNotification struct {
 	Topic         string `json:"topic,omitempty"`         // terse session topic (rendered above message)
 	WorkDir       string `json:"workdir,omitempty"`       // working directory
 	Branch        string `json:"branch,omitempty"`        // git branch
-	Worktree      string `json:"worktree,omitempty"`      // git worktree root path
+	Worktree      string `json:"worktree,omitempty"`      // branch name inside the linked worktree (empty when not in a worktree)
 	Timestamp     int64  `json:"timestamp"`               // unix ms
 	WorkspaceName string `json:"workspacename,omitempty"` // filled by backend
+	TabName       string `json:"tabname,omitempty"`       // filled by backend
 }
 
 // AgentNotifyEvent is the payload for Event_AgentNotify events.

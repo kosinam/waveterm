@@ -1571,6 +1571,9 @@ func (ws *WshServer) AgentNotifyCommand(ctx context.Context, data baseds.AgentNo
 					if ws, err2 := wstore.DBGet[*waveobj.Workspace](ctx, workspaceId); err2 == nil && ws != nil {
 						data.WorkspaceName = ws.Name
 					}
+					if tab, err2 := wstore.DBGet[*waveobj.Tab](ctx, tabId); err2 == nil && tab != nil {
+						data.TabName = tab.Name
+					}
 					windowId, err := wstore.DBFindWindowForWorkspaceId(ctx, workspaceId)
 					if err == nil {
 						data.WindowId = windowId

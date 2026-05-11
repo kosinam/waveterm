@@ -12,6 +12,7 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -466,6 +467,23 @@ func runGitCmd(dir string, args ...string) string {
 	return strings.TrimSpace(string(out))
 }
 
+// linkedWorktreeMainRepo returns the main repo root when dir is inside a linked
+// worktree, and "" when it is the main working tree or not a git repo.
+// Detection: --git-dir and --git-common-dir point to different locations only
+// for linked worktrees (the linked worktree gets its own per-worktree git dir
+// under <main>/.git/worktrees/<name>).
+func linkedWorktreeMainRepo(dir string) string {
+	gitDir := runGitCmd(dir, "rev-parse", "--git-dir")
+	commonDir := runGitCmd(dir, "rev-parse", "--git-common-dir")
+	if gitDir == "" || commonDir == "" || gitDir == commonDir {
+		return ""
+	}
+	if !filepath.IsAbs(commonDir) {
+		commonDir = filepath.Join(dir, commonDir)
+	}
+	return filepath.Dir(filepath.Clean(commonDir))
+}
+
 // sendHookNotification sends an AgentNotification for Claude Code hooks.
 func sendHookNotification(message, cwd, status string) error {
 	return sendHookNotificationForAgent(message, cwd, status, "claude")
@@ -491,7 +509,15 @@ func sendHookNotificationForAgentWithNotifyIDLifecycle(message, cwd, status, age
 	}
 
 	branch := runGitCmd(workDir, "branch", "--show-current")
-	worktree := runGitCmd(workDir, "rev-parse", "--show-toplevel")
+	worktree := ""
+	if mainRepo := linkedWorktreeMainRepo(workDir); mainRepo != "" {
+		worktree = branch // worktree branch name (before switching to main)
+		workDir = mainRepo
+		branch = runGitCmd(mainRepo, "branch", "--show-current")
+	}
+	if homeDir := os.Getenv("HOME"); homeDir != "" && strings.HasPrefix(workDir, homeDir+"/") {
+		workDir = "~/" + workDir[len(homeDir)+1:]
+	}
 
 	oref, _ := resolveBlockArg()
 	orefStr := ""
@@ -633,7 +659,15 @@ func sendClaudeHookNotificationWithTopic(message, cwd, status, notifyId, lifecyc
 		workDir = os.Getenv("PWD")
 	}
 	branch := runGitCmd(workDir, "branch", "--show-current")
-	worktree := runGitCmd(workDir, "rev-parse", "--show-toplevel")
+	worktree := ""
+	if mainRepo := linkedWorktreeMainRepo(workDir); mainRepo != "" {
+		worktree = branch // worktree branch name (before switching to main)
+		workDir = mainRepo
+		branch = runGitCmd(mainRepo, "branch", "--show-current")
+	}
+	if homeDir := os.Getenv("HOME"); homeDir != "" && strings.HasPrefix(workDir, homeDir+"/") {
+		workDir = "~/" + workDir[len(homeDir)+1:]
+	}
 
 	oref, _ := resolveBlockArg()
 	orefStr := ""
