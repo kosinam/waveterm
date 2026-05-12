@@ -91,6 +91,29 @@
     .close {
         visibility: hidden;
     }
+
+    .tab-shortcut-hint {
+        position: absolute;
+        top: 50%;
+        right: 6px;
+        transform: translateY(-50%);
+        font-family: monospace;
+        font-size: 11px;
+        font-weight: 500;
+        letter-spacing: 0.3px;
+        color: var(--main-text-color);
+        opacity: 0.85;
+        user-select: none;
+        pointer-events: none;
+        white-space: nowrap;
+        z-index: var(--zindex-tab-name);
+    }
+}
+
+body:not(.nohover) .tab:hover .tab-shortcut-hint,
+body:not(.nohover) .tab.dragging .tab-shortcut-hint,
+body.nohover .tab.active .tab-shortcut-hint {
+    visibility: hidden;
 }
 
 // Only apply hover effects when not in nohover mode. This prevents the previously-hovered tab from remaining hovered while a tab view is not mounted.

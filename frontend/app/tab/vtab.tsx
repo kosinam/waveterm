@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { validateCssColor } from "@/util/color-validator";
+import { isMacOS } from "@/util/platformutil";
 import { cn } from "@/util/util";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { TabBadges } from "./tabbadges";
@@ -18,6 +19,7 @@ export interface VTabItem {
 
 interface VTabProps {
     tab: VTabItem;
+    tabIndex?: number;
     active: boolean;
     showDivider?: boolean;
     isDragging: boolean;
@@ -36,6 +38,7 @@ interface VTabProps {
 
 export function VTab({
     tab,
+    tabIndex,
     active,
     showDivider = true,
     isDragging,
@@ -143,6 +146,9 @@ export function VTab({
         event.stopPropagation();
     };
 
+    const tabNum =
+        tabIndex != null && tabIndex < 9 ? `${isMacOS() ? "⌘" : "M"}${tabIndex + 1}` : null;
+
     return (
         <div
             draggable
@@ -184,21 +190,30 @@ export function VTab({
                 className="mr-1 min-w-[16px] shrink-0 static top-auto left-auto z-auto h-[16px] w-auto translate-y-0 justify-start px-[2px] py-[1px] [&_i]:text-[10px]"
             />
             <div
-                ref={editableRef}
                 className={cn(
-                    "min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap transition-[padding-right] pr-3",
+                    "min-w-0 flex-1 flex items-center overflow-hidden transition-[padding-right] pr-3",
                     onClose && !isReordering && "group-hover:pr-6",
-                    isEditable && "rounded-[2px] bg-white/15 outline-none"
+                    isEditable && "rounded-[2px] bg-white/15"
                 )}
-                contentEditable={isEditable}
-                role="textbox"
-                aria-label="Tab name"
-                aria-readonly={!isEditable}
-                onBlur={handleBlur}
-                onKeyDown={handleKeyDown}
-                suppressContentEditableWarning={true}
             >
-                {tab.name}
+                {tabNum && !isEditable && (
+                    <span className="shrink-0 font-mono text-[9px] opacity-35 mr-1.5 select-none">
+                        {tabNum}
+                    </span>
+                )}
+                <div
+                    ref={editableRef}
+                    className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap outline-none"
+                    contentEditable={isEditable}
+                    role="textbox"
+                    aria-label="Tab name"
+                    aria-readonly={!isEditable}
+                    onBlur={handleBlur}
+                    onKeyDown={handleKeyDown}
+                    suppressContentEditableWarning={true}
+                >
+                    {tab.name}
+                </div>
             </div>
             {onClose && (
                 <button

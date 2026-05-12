@@ -141,6 +141,7 @@ function VTabWrapper({
     isDragging,
     isReordering,
     hoverResetVersion,
+    index,
     onSelect,
     onClose,
     onRename,
@@ -187,6 +188,7 @@ function VTabWrapper({
         <VTab
             key={`${tabId}:${hoverResetVersion}`}
             tab={tab}
+            tabIndex={index}
             active={active}
             showDivider={showDivider}
             isDragging={isDragging}

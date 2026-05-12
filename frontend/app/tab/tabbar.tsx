@@ -662,6 +662,7 @@ const TabBar = memo(({ workspace, noTabs }: TabBarProps) => {
                                     key={tabId}
                                     ref={tabRefs.current[index]}
                                     id={tabId}
+                                    tabIndex={index}
                                     showDivider={showDivider}
                                     onSelect={() => handleSelectTab(tabId)}
                                     active={isActive}

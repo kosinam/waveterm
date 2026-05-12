@@ -7,6 +7,7 @@ import { TabRpcClient } from "@/app/store/wshrpcutil";
 import { WaveEnv, WaveEnvSubset, useWaveEnv } from "@/app/waveenv/waveenv";
 import { Button } from "@/element/button";
 import { validateCssColor } from "@/util/color-validator";
+import { isMacOS } from "@/util/platformutil";
 import { fireAndForget } from "@/util/util";
 import clsx from "clsx";
 import { useAtomValue } from "jotai";
@@ -34,6 +35,7 @@ export type TabEnv = WaveEnvSubset<{
 interface TabVProps {
     tabId: string;
     tabName: string;
+    tabIndex?: number;
     active: boolean;
     showDivider: boolean;
     isDragging: boolean;
@@ -54,6 +56,7 @@ const TabV = forwardRef<HTMLDivElement, TabVProps>((props, ref) => {
     const {
         tabId,
         tabName,
+        tabIndex,
         active,
         showDivider,
         isDragging,
@@ -177,6 +180,9 @@ const TabV = forwardRef<HTMLDivElement, TabVProps>((props, ref) => {
         event.stopPropagation();
     };
 
+    const tabNum =
+        tabIndex != null && tabIndex < 9 ? `${isMacOS() ? "⌘" : "M"}${tabIndex + 1}` : null;
+
     return (
         <div
             ref={tabRef}
@@ -203,6 +209,7 @@ const TabV = forwardRef<HTMLDivElement, TabVProps>((props, ref) => {
                 >
                     {displayName}
                 </div>
+                {tabNum && !isEditable && <div className="tab-shortcut-hint">{tabNum}</div>}
                 <TabBadges badges={badges} flagColor={flagColor} />
                 <Button
                     className="ghost grey close"
@@ -221,6 +228,7 @@ TabV.displayName = "TabV";
 
 interface TabProps {
     id: string;
+    tabIndex?: number;
     active: boolean;
     showDivider: boolean;
     isDragging: boolean;
@@ -233,7 +241,7 @@ interface TabProps {
 }
 
 const TabInner = forwardRef<HTMLDivElement, TabProps>((props, ref) => {
-    const { id, active, showDivider, isDragging, tabWidth, isNew, onLoaded, onSelect, onClose, onDragStart } = props;
+    const { id, tabIndex, active, showDivider, isDragging, tabWidth, isNew, onLoaded, onSelect, onClose, onDragStart } = props;
     const env = useWaveEnv<TabEnv>();
     const [tabData, _] = env.wos.useWaveObjectValue<Tab>(makeORef("tab", id));
     const badges = useAtomValue(getTabBadgeAtom(id, env));
@@ -285,6 +293,7 @@ const TabInner = forwardRef<HTMLDivElement, TabProps>((props, ref) => {
             ref={ref}
             tabId={id}
             tabName={tabData?.name ?? ""}
+            tabIndex={tabIndex}
             active={active}
             showDivider={showDivider}
             isDragging={isDragging}
