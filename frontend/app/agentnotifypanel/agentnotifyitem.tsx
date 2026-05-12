@@ -76,15 +76,11 @@ export const AgentNotifyItem = memo(({ notification, isRead, onNavigate, getStat
             ? "bg-red-800/70 hover:bg-red-800/80"
             : "bg-blue-700/80 hover:bg-blue-700/90";
 
-    const pulseAnim = isCompletion
-        ? "agent-bg-pulse-green"
-        : isQuestion
-          ? "agent-bg-pulse-yellow"
-          : isError
-            ? "agent-bg-pulse-red"
-            : "agent-bg-pulse-blue";
+    const pulsePeak = tabFlagColor
+        ? `color-mix(in srgb, ${tabFlagColor} 25%, transparent)`
+        : "rgba(255, 255, 255, 0.12)";
     const itemStyle: React.CSSProperties | undefined = isInProgress
-        ? { animation: `${pulseAnim} 2.5s ease-in-out infinite` }
+        ? ({ animation: "agent-bg-pulse-dynamic 2.5s ease-in-out infinite", "--pulse-color": pulsePeak } as React.CSSProperties)
         : undefined;
 
     const handleClick = useCallback(() => {
@@ -122,11 +118,11 @@ export const AgentNotifyItem = memo(({ notification, isRead, onNavigate, getStat
                     )}
                     {/* Row 1: tab name + workdir path */}
                     {(notification.tabname || notification.workdir) && (
-                        <div className="flex flex-wrap items-center gap-x-2 mb-0.5">
+                        <div className="flex flex-nowrap items-center gap-x-2 mb-0.5 min-w-0 overflow-hidden">
                             {notification.tabname && (
-                                <span className="flex items-center gap-1 text-[10px] font-semibold" style={{ color: flagColor }}>
+                                <span className="flex items-center gap-1 text-[10px] font-semibold min-w-0" style={{ color: flagColor }}>
                                     <i className="fa-solid fa-flag shrink-0" style={{ fontSize: "9px" }} />
-                                    <span>{notification.tabname}</span>
+                                    <span className="truncate">{notification.tabname}</span>
                                 </span>
                             )}
                             {notification.workdir && (
@@ -139,7 +135,7 @@ export const AgentNotifyItem = memo(({ notification, isRead, onNavigate, getStat
                     )}
                     {/* Row 2: agent + main branch + worktree branch (worktree only when in a linked worktree) */}
                     {(notification.agent || notification.branch || notification.worktree) && (
-                        <div className="flex flex-wrap items-center gap-x-2 mb-0.5">
+                        <div className="flex flex-nowrap items-center gap-x-2 mb-0.5 min-w-0 overflow-hidden">
                             {notification.agent && (
                                 <span className={cn("flex items-center gap-0.5 text-[10px] min-w-0", metaColor)}>
                                     <i className="fa-solid fa-terminal shrink-0" style={{ fontSize: "9px" }} />
@@ -161,21 +157,25 @@ export const AgentNotifyItem = memo(({ notification, isRead, onNavigate, getStat
                         </div>
                     )}
                     {inProgress ? (
-                        <div className={cn("text-[10px] line-clamp-5", isRead ? "text-secondary/80" : "text-white/80")}>
-                            <span className="text-green-400 mr-0.5" style={{ fontSize: "11px", animation: "agent-glow 1s ease-in-out infinite" }}>●</span>
-                            <span className={cn("font-mono mr-1.5", elapsed >= 600 ? "text-red-400" : elapsed >= 300 ? "text-yellow-400" : isRead ? "text-secondary/65" : "text-white/65")}>
-                                {formatElapsed(elapsed)}
-                            </span>
-                            {inProgress.message}
+                        <div className="h-[52px] overflow-hidden">
+                            <div className={cn("text-[10px] line-clamp-4", isRead ? "text-secondary/80" : "text-white/80")}>
+                                <span className="text-green-400 mr-0.5" style={{ fontSize: "11px", animation: "agent-glow 1s ease-in-out infinite" }}>●</span>
+                                <span className={cn("font-mono mr-1.5", elapsed >= 600 ? "text-red-400" : elapsed >= 300 ? "text-yellow-400" : isRead ? "text-secondary/65" : "text-white/65")}>
+                                    {formatElapsed(elapsed)}
+                                </span>
+                                {inProgress.message}
+                            </div>
                         </div>
                     ) : (
-                        <div className="line-clamp-5">
-                            {notification.timestamp > 0 && (
-                                <span className={cn("mr-1.5 font-mono", isRead ? "text-secondary/65" : "text-white/65")}>
-                                    {formatTime(notification.timestamp)}
-                                </span>
-                            )}
-                            {notification.message}
+                        <div className="h-[52px] overflow-hidden">
+                            <div className="line-clamp-4">
+                                {notification.timestamp > 0 && (
+                                    <span className={cn("mr-1.5 font-mono", isRead ? "text-secondary/65" : "text-white/65")}>
+                                        {formatTime(notification.timestamp)}
+                                    </span>
+                                )}
+                                {notification.message}
+                            </div>
                         </div>
                     )}
                 </div>
