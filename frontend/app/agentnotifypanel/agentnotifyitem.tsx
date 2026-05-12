@@ -76,6 +76,17 @@ export const AgentNotifyItem = memo(({ notification, isRead, onNavigate, getStat
             ? "bg-red-800/70 hover:bg-red-800/80"
             : "bg-blue-700/80 hover:bg-blue-700/90";
 
+    const pulseAnim = isCompletion
+        ? "agent-bg-pulse-green"
+        : isQuestion
+          ? "agent-bg-pulse-yellow"
+          : isError
+            ? "agent-bg-pulse-red"
+            : "agent-bg-pulse-blue";
+    const itemStyle: React.CSSProperties | undefined = isInProgress
+        ? { animation: `${pulseAnim} 2.5s ease-in-out infinite` }
+        : undefined;
+
     const handleClick = useCallback(() => {
         onNavigate(notification);
     }, [notification, onNavigate]);
@@ -92,8 +103,9 @@ export const AgentNotifyItem = memo(({ notification, isRead, onNavigate, getStat
         <div
             className={cn(
                 "group relative flex flex-col gap-0.5 px-2 py-2 rounded-md border border-border/20 cursor-pointer transition-colors",
-                isRead ? "bg-white/5 hover:bg-white/10" : unreadBg
+                !isInProgress && (isRead ? "bg-white/5 hover:bg-white/10" : unreadBg)
             )}
+            style={itemStyle}
             onClick={handleClick}
             title="Click to navigate to this block"
         >

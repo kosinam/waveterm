@@ -126,3 +126,20 @@ svg [aria-label="tip"] g path {
     0%, 100% { opacity: 1; }
     50% { opacity: 0.2; }
 }
+
+@keyframes agent-bg-pulse-blue {
+    0%, 100% { background-color: rgba(29, 78, 216, 0.8); }
+    50% { background-color: rgba(255, 255, 255, 0.05); }
+}
+@keyframes agent-bg-pulse-green {
+    0%, 100% { background-color: rgba(22, 101, 52, 0.7); }
+    50% { background-color: rgba(255, 255, 255, 0.05); }
+}
+@keyframes agent-bg-pulse-yellow {
+    0%, 100% { background-color: rgba(161, 98, 7, 0.7); }
+    50% { background-color: rgba(255, 255, 255, 0.05); }
+}
+@keyframes agent-bg-pulse-red {
+    0%, 100% { background-color: rgba(153, 27, 27, 0.7); }
+    50% { background-color: rgba(255, 255, 255, 0.05); }
+}
