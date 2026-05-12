@@ -127,6 +127,7 @@ type SettingsType struct {
 
 	WebClear               bool   `json:"web:*,omitempty"`
 	WebOpenLinksInternally bool   `json:"web:openlinksinternally,omitempty"`
+	WebDarkReader          bool   `json:"web:darkreader,omitempty"`
 	WebDefaultUrl          string `json:"web:defaulturl,omitempty"`
 	WebDefaultSearch       string `json:"web:defaultsearch,omitempty"`
 

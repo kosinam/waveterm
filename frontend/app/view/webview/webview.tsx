@@ -21,6 +21,7 @@ import { WebviewTag } from "electron";
 import { Atom, PrimitiveAtom, atom, useAtomValue, useSetAtom } from "jotai";
 import { Fragment, createRef, memo, useCallback, useEffect, useRef, useState } from "react";
 import "./webview.scss";
+import { applyDarkReader } from "./darkreader-inject";
 import { getMergedUrlSuggestions } from "./webview-url-suggestions";
 import type { WebViewEnv } from "./webviewenv";
 
@@ -74,6 +75,7 @@ export class WebViewModel implements ViewModel {
     inlineSuggestionIndex: PrimitiveAtom<number>;
     partitionOverride: PrimitiveAtom<string> | null;
     userAgentType: Atom<string>;
+    darkReaderEnabled: Atom<boolean>;
     env: WebViewEnv;
     ctrlShiftUnsubFn: (() => void) | null = null;
 
@@ -108,6 +110,15 @@ export class WebViewModel implements ViewModel {
         this.inlineSuggestionIndex = atom(-1);
         this.partitionOverride = null;
         this.userAgentType = this.env.getBlockMetaKeyAtom(blockId, "web:useragenttype");
+        const darkReaderMetaAtom = this.env.getBlockMetaKeyAtom(blockId, "web:darkreader");
+        const darkReaderSettingAtom = this.env.getSettingsKeyAtom("web:darkreader");
+        this.darkReaderEnabled = atom((get) => {
+            const blockMeta = get(darkReaderMetaAtom);
+            if (blockMeta != null) {
+                return !!blockMeta;
+            }
+            return !!get(darkReaderSettingAtom);
+        });
 
         this.mediaPlaying = atom(false);
         this.mediaMuted = atom(false);
@@ -197,6 +208,21 @@ export class WebViewModel implements ViewModel {
                     noAction: true,
                 });
             }
+
+            const darkReader = get(this.darkReaderEnabled);
+            buttons.push({
+                elemtype: "iconbutton",
+                icon: darkReader ? "circle-half-stroke" : "moon",
+                title: darkReader ? "Dark Reader: On" : "Dark Reader: Off",
+                click: () => {
+                    fireAndForget(() =>
+                        this.env.rpc.SetMetaCommand(TabRpcClient, {
+                            oref: makeORef("block", this.blockId),
+                            meta: { "web:darkreader": !darkReader },
+                        })
+                    );
+                },
+            });
 
             buttons.push({
                 elemtype: "iconbutton",
@@ -954,6 +980,7 @@ const WebView = memo(({ model, onFailLoad, blockRef, initialSrc }: WebViewProps)
     const metaPartition = useAtomValue(env.getBlockMetaKeyAtom(model.blockId, "web:partition"));
     const webPartition = partitionOverride || metaPartition || undefined;
     const userAgentType = useAtomValue(model.userAgentType) || "default";
+    const darkReaderEnabled = useAtomValue(model.darkReaderEnabled);
 
     // Determine user agent string based on type
     let userAgent: string | undefined = undefined;
@@ -1083,6 +1110,11 @@ const WebView = memo(({ model, onFailLoad, blockRef, initialSrc }: WebViewProps)
         }
     }, [metaUrl, initialSrc]);
 
+    useEffect(() => {
+        if (!domReady) return;
+        fireAndForget(() => applyDarkReader(model.webviewRef.current, darkReaderEnabled));
+    }, [darkReaderEnabled, domReady]);
+
     // Reload webview when user agent type changes
     useEffect(() => {
         if (prevUserAgentTypeRef.current !== userAgentType && domReady && model.webviewRef.current) {
@@ -1152,6 +1184,9 @@ const WebView = memo(({ model, onFailLoad, blockRef, initialSrc }: WebViewProps)
         const handleDomReady = () => {
             globalStore.set(model.domReady, true);
             setBgColor();
+            if (globalStore.get(model.darkReaderEnabled)) {
+                fireAndForget(() => applyDarkReader(webview, true));
+            }
         };
         const handleMediaPlaying = () => {
             model.setMediaPlaying(true);

@@ -213,6 +213,9 @@
         "web:openlinksinternally": {
           "type": "boolean"
         },
+        "web:darkreader": {
+          "type": "boolean"
+        },
         "web:defaulturl": {
           "type": "string"
         },

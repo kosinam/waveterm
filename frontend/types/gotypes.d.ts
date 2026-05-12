@@ -1223,6 +1223,7 @@ declare global {
         "web:hidenav"?: boolean;
         "web:partition"?: string;
         "web:useragenttype"?: string;
+        "web:darkreader"?: boolean;
         "markdown:fontsize"?: number;
         "markdown:fixedfontsize"?: number;
         "tsunami:*"?: boolean;
@@ -1466,6 +1467,7 @@ declare global {
         "editor:vimmode"?: boolean;
         "web:*"?: boolean;
         "web:openlinksinternally"?: boolean;
+        "web:darkreader"?: boolean;
         "web:defaulturl"?: string;
         "web:defaultsearch"?: string;
         "autoupdate:*"?: boolean;

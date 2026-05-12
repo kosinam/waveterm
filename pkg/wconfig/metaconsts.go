@@ -76,6 +76,7 @@ const (
 
 	ConfigKey_WebClear                       = "web:*"
 	ConfigKey_WebOpenLinksInternally         = "web:openlinksinternally"
+	ConfigKey_WebDarkReader                  = "web:darkreader"
 	ConfigKey_WebDefaultUrl                  = "web:defaulturl"
 	ConfigKey_WebDefaultSearch               = "web:defaultsearch"
 

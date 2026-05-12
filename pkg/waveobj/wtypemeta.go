@@ -142,6 +142,7 @@ type MetaTSType struct {
 	WebHideNav       *bool   `json:"web:hidenav,omitempty"`
 	WebPartition     string  `json:"web:partition,omitempty"`
 	WebUserAgentType string  `json:"web:useragenttype,omitempty"`
+	WebDarkReader    *bool   `json:"web:darkreader,omitempty"`
 
 	MarkdownFontSize      float64 `json:"markdown:fontsize,omitempty"`
 	MarkdownFixedFontSize float64 `json:"markdown:fixedfontsize,omitempty"`

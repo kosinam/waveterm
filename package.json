@@ -95,6 +95,7 @@
         "color": "^4.2.3",
         "colord": "^2.9.3",
         "css-tree": "^3.1.0",
+        "darkreader": "^4.9.125",
         "dayjs": "^1.11.19",
         "debug": "^4.4.3",
         "electron-updater": "^6.6",
