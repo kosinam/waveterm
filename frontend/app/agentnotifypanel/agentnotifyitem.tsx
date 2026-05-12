@@ -47,7 +47,9 @@ export const AgentNotifyItem = memo(({ notification, isRead, onNavigate, getStat
     const inProgress = inProgressMap.get(notification.notifyid);
 
     const isInProgress = inProgress != null;
-    const [elapsed, setElapsed] = useState(0);
+    const [elapsed, setElapsed] = useState(() =>
+        isInProgress ? Math.floor((Date.now() - getInProgressStartMs(notification.notifyid)) / 1000) : 0
+    );
     useEffect(() => {
         if (!isInProgress) {
             setElapsed(0);
@@ -71,7 +73,7 @@ export const AgentNotifyItem = memo(({ notification, isRead, onNavigate, getStat
         : isCompletion
         ? "bg-green-800/70 hover:bg-green-800/80"
         : isQuestion
-          ? "bg-yellow-700/70 hover:bg-yellow-700/80"
+          ? "bg-yellow-500/55 hover:bg-yellow-500/65"
           : isError
             ? "bg-red-800/70 hover:bg-red-800/80"
             : "bg-blue-700/80 hover:bg-blue-700/90";
@@ -79,9 +81,13 @@ export const AgentNotifyItem = memo(({ notification, isRead, onNavigate, getStat
     const pulsePeak = tabFlagColor
         ? `color-mix(in srgb, ${tabFlagColor} 25%, transparent)`
         : "rgba(255, 255, 255, 0.12)";
-    const itemStyle: React.CSSProperties | undefined = isInProgress
-        ? ({ animation: "agent-bg-pulse-dynamic 2.5s ease-in-out infinite", "--pulse-color": pulsePeak } as React.CSSProperties)
-        : undefined;
+    const showAccentBorder = !isRead && !isInProgress;
+    const itemStyle: React.CSSProperties = {
+        ...(isInProgress
+            ? ({ animation: "agent-bg-pulse-dynamic 2.5s ease-in-out infinite", "--pulse-color": pulsePeak } as React.CSSProperties)
+            : {}),
+        ...(showAccentBorder ? { boxShadow: "inset 0 0 0 2px var(--block-border-color)" } : {}),
+    };
 
     const handleClick = useCallback(() => {
         onNavigate(notification);

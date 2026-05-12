@@ -109,16 +109,31 @@ export function getInProgressStartMs(notifyId: string): number {
     return inProgressStartMs.get(notifyId) ?? Date.now();
 }
 
-// Auto-clear in-progress state if no intermediate update arrives within this window
-// (handles agent interruption via Ctrl-C / Esc, which fires no terminal hook).
-const inProgressIdleTimeoutMs = 15000;
-const inProgressTimeouts = new Map<string, ReturnType<typeof setTimeout>>();
+// Two-stage idle handling for the in-progress spinner:
+//   Stage 1 (30s): relabel the message to "Working" so deep-thinking pauses
+//     between tool calls still look alive.
+//   Stage 2 (60s): assume the agent was interrupted (Ctrl-C / Esc fires no
+//     terminal hook) and clear the indicator entirely.
+const inProgressWorkingTimeoutMs = 30000;
+const inProgressIdleTimeoutMs = 60000;
+const inProgressWorkingTimeouts = new Map<string, ReturnType<typeof setTimeout>>();
+const inProgressClearTimeouts = new Map<string, ReturnType<typeof setTimeout>>();
 
 function scheduleInProgressIdleTimeout(notifyId: string) {
-    const existing = inProgressTimeouts.get(notifyId);
-    if (existing) clearTimeout(existing);
-    const id = setTimeout(() => {
-        inProgressTimeouts.delete(notifyId);
+    cancelInProgressIdleTimeout(notifyId);
+    const workingId = setTimeout(() => {
+        inProgressWorkingTimeouts.delete(notifyId);
+        globalStore.set(agentInProgressAtom, (prev) => {
+            const current = prev.get(notifyId);
+            if (!current) return prev;
+            const next = new Map(prev);
+            next.set(notifyId, { ...current, message: "Working..." });
+            return next;
+        });
+    }, inProgressWorkingTimeoutMs);
+    inProgressWorkingTimeouts.set(notifyId, workingId);
+    const clearId = setTimeout(() => {
+        inProgressClearTimeouts.delete(notifyId);
         inProgressStartMs.delete(notifyId);
         globalStore.set(agentInProgressAtom, (prev) => {
             if (!prev.has(notifyId)) return prev;
@@ -127,14 +142,19 @@ function scheduleInProgressIdleTimeout(notifyId: string) {
             return next;
         });
     }, inProgressIdleTimeoutMs);
-    inProgressTimeouts.set(notifyId, id);
+    inProgressClearTimeouts.set(notifyId, clearId);
 }
 
 function cancelInProgressIdleTimeout(notifyId: string) {
-    const existing = inProgressTimeouts.get(notifyId);
-    if (existing) {
-        clearTimeout(existing);
-        inProgressTimeouts.delete(notifyId);
+    const working = inProgressWorkingTimeouts.get(notifyId);
+    if (working) {
+        clearTimeout(working);
+        inProgressWorkingTimeouts.delete(notifyId);
+    }
+    const clear = inProgressClearTimeouts.get(notifyId);
+    if (clear) {
+        clearTimeout(clear);
+        inProgressClearTimeouts.delete(notifyId);
     }
 }
 
@@ -273,8 +293,10 @@ export function setupAgentNotifySubscription(): void {
             if (data == null) return;
 
             if (data.clearall) {
-                inProgressTimeouts.forEach((id) => clearTimeout(id));
-                inProgressTimeouts.clear();
+                inProgressWorkingTimeouts.forEach((id) => clearTimeout(id));
+                inProgressWorkingTimeouts.clear();
+                inProgressClearTimeouts.forEach((id) => clearTimeout(id));
+                inProgressClearTimeouts.clear();
                 inProgressStartMs.clear();
                 globalStore.set(agentNotificationsAtom, []);
                 globalStore.set(agentInProgressAtom, new Map());

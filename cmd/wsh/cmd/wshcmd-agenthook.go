@@ -807,7 +807,7 @@ func agentHookClaudeUserPromptSubmitRun(cmd *cobra.Command, args []string) (rtnE
 	if err != nil {
 		return err
 	}
-	return sendClaudeHookNotificationWithTopic("Thinking…", cwd, "info", "", agentLifecycleIntermediate, "", false)
+	return sendClaudeHookNotificationWithTopic("Working...", cwd, "info", "", agentLifecycleIntermediate, "", false)
 }
 
 func agentHookClaudeSessionStartRun(cmd *cobra.Command, args []string) (rtnErr error) {
