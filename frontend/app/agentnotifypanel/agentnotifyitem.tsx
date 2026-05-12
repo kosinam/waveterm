@@ -162,7 +162,7 @@ export const AgentNotifyItem = memo(({ notification, isRead, onNavigate, getStat
                     )}
                     {inProgress ? (
                         <div className={cn("text-[10px] line-clamp-5", isRead ? "text-secondary/80" : "text-white/80")}>
-                            <span className="text-green-400 mr-0.5" style={{ fontSize: "11px", animation: "agent-glow 1.2s ease-in-out infinite" }}>●</span>
+                            <span className="text-green-400 mr-0.5" style={{ fontSize: "11px", animation: "agent-glow 1s ease-in-out infinite" }}>●</span>
                             <span className={cn("font-mono mr-1.5", elapsed >= 600 ? "text-red-400" : elapsed >= 300 ? "text-yellow-400" : isRead ? "text-secondary/65" : "text-white/65")}>
                                 {formatElapsed(elapsed)}
                             </span>

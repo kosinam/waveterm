@@ -109,6 +109,35 @@ export function getInProgressStartMs(notifyId: string): number {
     return inProgressStartMs.get(notifyId) ?? Date.now();
 }
 
+// Auto-clear in-progress state if no intermediate update arrives within this window
+// (handles agent interruption via Ctrl-C / Esc, which fires no terminal hook).
+const inProgressIdleTimeoutMs = 15000;
+const inProgressTimeouts = new Map<string, ReturnType<typeof setTimeout>>();
+
+function scheduleInProgressIdleTimeout(notifyId: string) {
+    const existing = inProgressTimeouts.get(notifyId);
+    if (existing) clearTimeout(existing);
+    const id = setTimeout(() => {
+        inProgressTimeouts.delete(notifyId);
+        inProgressStartMs.delete(notifyId);
+        globalStore.set(agentInProgressAtom, (prev) => {
+            if (!prev.has(notifyId)) return prev;
+            const next = new Map(prev);
+            next.delete(notifyId);
+            return next;
+        });
+    }, inProgressIdleTimeoutMs);
+    inProgressTimeouts.set(notifyId, id);
+}
+
+function cancelInProgressIdleTimeout(notifyId: string) {
+    const existing = inProgressTimeouts.get(notifyId);
+    if (existing) {
+        clearTimeout(existing);
+        inProgressTimeouts.delete(notifyId);
+    }
+}
+
 // Derived count of unread notifications.
 export const agentUnreadCountAtom = atom((get) => {
     const notifications = get(agentNotificationsAtom);
@@ -244,6 +273,8 @@ export function setupAgentNotifySubscription(): void {
             if (data == null) return;
 
             if (data.clearall) {
+                inProgressTimeouts.forEach((id) => clearTimeout(id));
+                inProgressTimeouts.clear();
                 inProgressStartMs.clear();
                 globalStore.set(agentNotificationsAtom, []);
                 globalStore.set(agentInProgressAtom, new Map());
@@ -252,6 +283,7 @@ export function setupAgentNotifySubscription(): void {
                 return;
             }
             if (data.clear && data.notifyid) {
+                cancelInProgressIdleTimeout(data.notifyid);
                 inProgressStartMs.delete(data.notifyid);
                 globalStore.set(agentNotificationsAtom, (prev) => prev.filter((n) => n.notifyid !== data.notifyid));
                 globalStore.set(agentInProgressAtom, (prev) => {
@@ -280,6 +312,7 @@ export function setupAgentNotifySubscription(): void {
                     next.set(incoming.notifyid, incoming);
                     return next;
                 });
+                scheduleInProgressIdleTimeout(incoming.notifyid);
                 // If no terminal notification exists yet, add a placeholder so the panel
                 // renders an item that can show the in-progress indicator.
                 const hasTerminal = globalStore.get(agentNotificationsAtom).some(
@@ -294,6 +327,7 @@ export function setupAgentNotifySubscription(): void {
             }
 
             // Terminal notification: clear any in-progress indicator for this notifyid.
+            cancelInProgressIdleTimeout(incoming.notifyid);
             inProgressStartMs.delete(incoming.notifyid);
             globalStore.set(agentInProgressAtom, (prev) => {
                 if (!prev.has(incoming.notifyid)) return prev;
