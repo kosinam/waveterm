@@ -35,7 +35,6 @@ import {
 } from "@/layout/index";
 import * as keyutil from "@/util/keyutil";
 import { isWindows } from "@/util/platformutil";
-import { CHORD_TIMEOUT } from "@/util/sharedconst";
 import { fireAndForget, stringToBase64 } from "@/util/util";
 import * as jotai from "jotai";
 import { navigateToNotification } from "@/app/agentnotifypanel/agentnotifypanel";
@@ -48,34 +47,9 @@ type KeyHandler = (event: WaveKeyboardEvent) => boolean;
 
 const simpleControlShiftAtom = jotai.atom(false);
 const globalKeyMap = new Map<string, (waveEvent: WaveKeyboardEvent) => boolean>();
-const globalChordMap = new Map<string, Map<string, KeyHandler>>();
 let globalKeybindingsDisabled = false;
-const DEFAULT_CHORD_PREFIX = "Ctrl:w";
-
-// track current chord state and timeout (for resetting)
-let activeChord: string | null = null;
-let chordTimeout: NodeJS.Timeout = null;
 let lastUnreadNotificationJumpId: string | null = null;
 let pendingAutoReadTimer: ReturnType<typeof setTimeout> | null = null;
-
-function resetChord() {
-    activeChord = null;
-    (window as any).__waveActiveChord = null;
-    if (chordTimeout) {
-        clearTimeout(chordTimeout);
-        chordTimeout = null;
-    }
-}
-
-function setActiveChord(activeChordArg: string) {
-    getApi().setKeyboardChordMode();
-    if (chordTimeout) {
-        clearTimeout(chordTimeout);
-    }
-    activeChord = activeChordArg;
-    (window as any).__waveActiveChord = activeChordArg;
-    chordTimeout = setTimeout(() => resetChord(), CHORD_TIMEOUT);
-}
 
 export function keyboardMouseDownHandler(e: MouseEvent) {
     if (!e.ctrlKey || !e.shiftKey) {
@@ -560,28 +534,6 @@ function appHandleKeyDown(waveEvent: WaveKeyboardEvent): boolean {
         return false;
     }
     lastHandledEvent = nativeEvent;
-    if (activeChord) {
-        // Ignore bare modifier keydowns — wait for the actual key
-        const modifierKeys = new Set(["Shift", "Control", "Alt", "Meta", "CapsLock", "NumLock", "ScrollLock"]);
-        if (modifierKeys.has(waveEvent.key)) {
-            return true;
-        }
-        const [, handler] = checkKeyMap(waveEvent, globalChordMap.get(activeChord));
-        if (handler) {
-            resetChord();
-            return handler(waveEvent);
-        } else {
-            // invalid chord; reset state and consume key
-            resetChord();
-            return true;
-        }
-    }
-    const [chordKeyMatch] = checkKeyMap(waveEvent, globalChordMap);
-    if (chordKeyMatch) {
-        setActiveChord(chordKeyMatch);
-        return true;
-    }
-
     const [, globalHandler] = checkKeyMap(waveEvent, globalKeyMap);
     if (globalHandler) {
         const handled = globalHandler(waveEvent);
@@ -1088,262 +1040,9 @@ function registerGlobalKeys() {
     const allKeys = Array.from(globalKeyMap.keys());
     // special case keys, handled by web view
     allKeys.push("Cmd:l", "Cmd:r", "Cmd:ArrowRight", "Cmd:ArrowLeft", "Cmd:o");
-
-    const splitBlockKeys = new Map<string, KeyHandler>();
-    splitBlockKeys.set("ArrowUp", () => {
-        handleSplitVertical("before");
-        return true;
-    });
-    splitBlockKeys.set("ArrowDown", () => {
-        handleSplitVertical("after");
-        return true;
-    });
-    splitBlockKeys.set("ArrowLeft", () => {
-        handleSplitHorizontal("before");
-        return true;
-    });
-    splitBlockKeys.set("ArrowRight", () => {
-        handleSplitHorizontal("after");
-        return true;
-    });
-    globalChordMap.set("Ctrl:Shift:s", splitBlockKeys);
-
-    // Tmux-style prefix chord keybindings.
-    // The prefix key is configurable via app:chordprefix (default: Ctrl:a).
-    // The prefix is consumed and will not pass through to the terminal.
-    const ctrlBKeys = new Map<string, KeyHandler>();
-    // tmux: % — split current pane vertically (side by side, new pane to the right)
-    ctrlBKeys.set("Shift:%", () => {
-        handleSplitHorizontal("after");
-        return true;
-    });
-    // tmux: " — split current pane horizontally (new pane below)
-    ctrlBKeys.set('Shift:"', () => {
-        handleSplitVertical("after");
-        return true;
-    });
-    // tmux: c — create new window (tab)
-    ctrlBKeys.set("c", () => {
-        createTab();
-        return true;
-    });
-    // tmux: n/p — next/previous window (tab)
-    ctrlBKeys.set("n", () => {
-        switchTab(1);
-        return true;
-    });
-    ctrlBKeys.set("p", () => {
-        switchTab(-1);
-        return true;
-    });
-    // tmux analogue: N — create new session (workspace); tmux has no default binding for this
-    ctrlBKeys.set("N", () => {
-        fireAndForget(async () => {
-            const now = new Date();
-            const pad = (n: number) => String(n).padStart(2, "0");
-            const name = `${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
-            const newWsId = await WorkspaceService.CreateWorkspace(name, "", "", true);
-            if (newWsId) getApi().switchWorkspace(newWsId);
-        });
-        return true;
-    });
-    // tmux convention: X — kill current session (workspace); no tmux default, common custom binding
-    ctrlBKeys.set("X", () => {
-        const workspaceId = globalStore.get(atoms.workspaceId);
-        if (workspaceId) getApi().deleteWorkspace(workspaceId);
-        return true;
-    });
-    // tmux: s — list/switch sessions (workspaces)
-    ctrlBKeys.set("s", () => {
-        modalsModel.pushModal("WorkspacePickerModal");
-        return true;
-    });
-    // tmux: $ — rename current session (workspace)
-    ctrlBKeys.set("Shift:$", () => {
-        globalStore.set(openWorkspaceEditorForCurrentAtom, true);
-        return true;
-    });
-    // tmux: 1-9 — switch to session (workspace) by number
-    for (let idx = 1; idx <= 9; idx++) {
-        const wsIdx = idx;
-        ctrlBKeys.set(`${wsIdx}`, () => {
-            switchWorkspaceAbs(wsIdx);
-            return true;
-        });
-    }
-    // tmux: ( / ) — switch to previous/next session (workspace)
-    ctrlBKeys.set("Shift:(", () => {
-        switchWorkspaceByOffset(-1);
-        return true;
-    });
-    ctrlBKeys.set("Shift:)", () => {
-        switchWorkspaceByOffset(1);
-        return true;
-    });
-    // tmux: arrow keys — navigate panes
-    ctrlBKeys.set("ArrowUp", () => {
-        switchBlockInDirection(NavigateDirection.Up);
-        return true;
-    });
-    ctrlBKeys.set("ArrowDown", () => {
-        switchBlockInDirection(NavigateDirection.Down);
-        return true;
-    });
-    ctrlBKeys.set("ArrowLeft", () => {
-        switchBlockInDirection(NavigateDirection.Left);
-        return true;
-    });
-    ctrlBKeys.set("ArrowRight", () => {
-        switchBlockInDirection(NavigateDirection.Right);
-        return true;
-    });
-    // tmux: z — zoom (magnify) current pane
-    ctrlBKeys.set("z", () => {
-        const layoutModel = getLayoutModelForStaticTab();
-        const focusedNode = globalStore.get(layoutModel.focusedNode);
-        if (focusedNode != null) {
-            layoutModel.magnifyNodeToggle(focusedNode.id);
-        }
-        return true;
-    });
-    // tmux: x — close current pane
-    ctrlBKeys.set("x", () => {
-        genericClose();
-        return true;
-    });
-    // tmux: { / } — swap current pane with previous/next pane
-    ctrlBKeys.set("Shift:{", () => {
-        swapPaneByOffset(-1);
-        return true;
-    });
-    ctrlBKeys.set("Shift:}", () => {
-        swapPaneByOffset(1);
-        return true;
-    });
-    // custom: f / F — open file browser pane to the right / below
-    ctrlBKeys.set("f", () => {
-        handleSplitFiles("after", "horizontal");
-        return true;
-    });
-    ctrlBKeys.set("F", () => {
-        handleSplitFiles("after", "vertical");
-        return true;
-    });
-    // custom: w — toggle widget panel
-    ctrlBKeys.set("w", () => {
-        const current = globalStore.get(getSettingsKeyAtom("app:hidewidgetpanel"));
-        fireAndForget(() => RpcApi.SetConfigCommand(TabRpcClient, { "app:hidewidgetpanel": !current }));
-        return true;
-    });
-    // custom: b — open a new browser pane to the right
-    ctrlBKeys.set("b", () => {
-        handleSplitHorizontalWeb("after");
-        return true;
-    });
-    // custom: B (Shift-B) — open a new browser pane below
-    ctrlBKeys.set("B", () => {
-        handleSplitVerticalWeb("after");
-        return true;
-    });
-    // custom: i — open a sysinfo (CPU + Mem) pane to the right
-    ctrlBKeys.set("i", () => {
-        fireAndForget(async () => {
-            const layoutModel = getLayoutModelForStaticTab();
-            const focusedNode = globalStore.get(layoutModel.focusedNode);
-            if (focusedNode == null) return;
-            const newBlockId = await createBlockSplitHorizontally(
-                { meta: { view: "sysinfo", "sysinfo:type": "CPU + Mem" } },
-                focusedNode.data.blockId,
-                "after"
-            );
-            setTimeout(() => refocusNode(newBlockId), 0);
-        });
-        return true;
-    });
-    // custom: ? — prompt for a URL and open it in a new browser pane to the right
-    ctrlBKeys.set("Shift:?", () => {
-        const layoutModel = getLayoutModelForStaticTab();
-        const focusedNode = globalStore.get(layoutModel.focusedNode);
-        if (focusedNode == null) return true;
-        const anchorBlockId = focusedNode.data.blockId;
-        globalStore.set(bottomBarRequestAtom, {
-            prompt: "open url:",
-            onSubmit: (url: string) => {
-                fireAndForget(() =>
-                    createBlockSplitHorizontally({ meta: { view: "web", url } }, anchorBlockId, "after")
-                );
-            },
-        });
-        return true;
-    });
-    // custom: : — open bottom bar for direct wsh command entry
-    ctrlBKeys.set("Shift:c{Semicolon}", () => {
-        globalStore.set(bottomBarRequestAtom, {
-            prompt: "wsh:",
-            onSubmit: (command: string) => sendWshCommand(command),
-        });
-        return true;
-    });
-    // tmux: ; — switch back to the previously focused pane/location
-    ctrlBKeys.set(";", () => {
-        fireAndForget(() => navigateToPreviousFocus());
-        return true;
-    });
-    // custom: a — toggle Wave AI panel
-    ctrlBKeys.set("a", () => {
-        const currentVisible = WorkspaceLayoutModel.getInstance().getAIPanelVisible();
-        WorkspaceLayoutModel.getInstance().setAIPanelVisible(!currentVisible);
-        return true;
-    });
-    // custom: I (Shift-I) — toggle Agent Notify panel
-    ctrlBKeys.set("I", () => {
-        const model = WorkspaceLayoutModel.getInstance();
-        model.setAgentNotifyPanelVisible(!model.getAgentNotifyPanelVisible());
-        return true;
-    });
-    // custom: u — jump to the oldest unread agent notification first
-    ctrlBKeys.set("u", () => {
-        const notifications = globalStore.get(agentNotificationsAtom);
-        const readIds = globalStore.get(agentReadIdsAtom);
-        const unreadNotifications = notifications.filter((n) => !readIds.has(n.notifyid));
-        if (unreadNotifications.length === 0) {
-            lastUnreadNotificationJumpId = null;
-            return true;
-        }
-        const lastUnreadIdx = unreadNotifications.findIndex((n) => n.notifyid === lastUnreadNotificationJumpId);
-        const nextUnreadIdx = lastUnreadIdx >= 0 ? (lastUnreadIdx + 1) % unreadNotifications.length : 0;
-        const unread = unreadNotifications[nextUnreadIdx];
-        if (!unread) return true;
-        lastUnreadNotificationJumpId = unread.notifyid;
-        // Open the panel if it isn't visible so the user sees the highlight clear.
-        const model = WorkspaceLayoutModel.getInstance();
-        if (!model.getAgentNotifyPanelVisible()) {
-            model.setAgentNotifyPanelVisible(true);
-        }
-        fireAndForget(() => navigateToNotification(unread, { markRead: false }));
-        if (pendingAutoReadTimer !== null) {
-            clearTimeout(pendingAutoReadTimer);
-            pendingAutoReadTimer = null;
-        }
-        if (unread.status === "completion" || unread.status === "error") {
-            const notifyId = unread.notifyid;
-            pendingAutoReadTimer = setTimeout(() => {
-                pendingAutoReadTimer = null;
-                const m = WorkspaceLayoutModel.getInstance();
-                if (!m.getAgentNotifyPanelVisible()) return;
-                markAgentNotificationRead(notifyId);
-            }, 5000);
-        }
-        return true;
-    });
-    const chordPrefix = globalStore.get(getSettingsKeyAtom("app:chordprefix")) || DEFAULT_CHORD_PREFIX;
-    globalChordMap.set(chordPrefix, ctrlBKeys);
-    const chordTriggerKeys = Array.from(globalChordMap.keys());
-    // Register chord trigger keys for synchronous chord-mode activation in webviews
-    getApi().registerWebviewChordTriggerKeys(chordTriggerKeys);
-    // Merge all global keys and chord trigger keys into one webview intercept list
-    getApi().registerGlobalWebviewKeys([...allKeys, ...chordTriggerKeys]);
+    getApi().registerGlobalWebviewKeys(allKeys);
 }
+
 
 function registerBuilderGlobalKeys() {
     globalKeyMap.set("Cmd:w", () => {

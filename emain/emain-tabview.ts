@@ -3,7 +3,6 @@
 
 import { RpcApi } from "@/app/store/wshclientapi";
 import { adaptFromElectronKeyEvent, checkKeyPressed } from "@/util/keyutil";
-import { CHORD_TIMEOUT } from "@/util/sharedconst";
 import { Rectangle, shell, WebContentsView } from "electron";
 import { createNewWaveWindow, getWaveWindowById } from "emain/emain-window";
 import path from "path";
@@ -23,14 +22,8 @@ import {
 import { ElectronWshClient } from "./emain-wsh";
 
 let webviewKeys: string[] = [];
-let webviewChordTriggerKeys: string[] = [];
-
 export function setWebviewKeys(keys: string[]) {
     webviewKeys = keys;
-}
-
-export function setWebviewChordTriggerKeys(keys: string[]) {
-    webviewChordTriggerKeys = keys;
 }
 
 function handleWindowsMenuAccelerators(
@@ -142,9 +135,6 @@ export class WaveTabView extends WebContentsView {
     isInitialized: boolean = false;
     isWaveReady: boolean = false;
     isDestroyed: boolean = false;
-    keyboardChordMode: boolean = false;
-    resetChordModeTimeout: NodeJS.Timeout = null;
-
     constructor(fullConfig: FullConfigType) {
         console.log("createBareTabView");
         super({
@@ -190,23 +180,6 @@ export class WaveTabView extends WebContentsView {
 
     set waveTabId(waveTabId: string) {
         this._waveTabId = waveTabId;
-    }
-
-    setKeyboardChordMode(mode: boolean) {
-        this.keyboardChordMode = mode;
-        if (mode) {
-            if (this.resetChordModeTimeout) {
-                clearTimeout(this.resetChordModeTimeout);
-            }
-            this.resetChordModeTimeout = setTimeout(() => {
-                this.keyboardChordMode = false;
-            }, CHORD_TIMEOUT);
-        } else {
-            if (this.resetChordModeTimeout) {
-                clearTimeout(this.resetChordModeTimeout);
-                this.resetChordModeTimeout = null;
-            }
-        }
     }
 
     positionTabOnScreen(winBounds: Rectangle) {
@@ -338,21 +311,9 @@ export async function getOrCreateWebViewForTab(waveWindowId: string, tabId: stri
             const waveEvent = adaptFromElectronKeyEvent(input);
             handleCtrlShiftState(tabView.webContents, waveEvent);
             if (input.type != "keyDown") return;
-            if (tabView.keyboardChordMode) {
-                const modifierKeys = new Set(["Shift", "Control", "Alt", "Meta", "CapsLock", "NumLock", "ScrollLock"]);
-                if (!modifierKeys.has(waveEvent.key)) {
-                    e.preventDefault();
-                    tabView.setKeyboardChordMode(false);
-                    tabView.webContents.send("reinject-key", waveEvent);
-                }
-                return;
-            }
             for (const keyDesc of webviewKeys) {
                 if (checkKeyPressed(waveEvent, keyDesc)) {
                     e.preventDefault();
-                    if (webviewChordTriggerKeys.some((t) => checkKeyPressed(waveEvent, t))) {
-                        tabView.setKeyboardChordMode(true);
-                    }
                     tabView.webContents.send("reinject-key", waveEvent);
                     return;
                 }
@@ -364,13 +325,6 @@ export async function getOrCreateWebViewForTab(waveWindowId: string, tabId: stri
         // console.log("WIN bie", tabView.waveTabId.substring(0, 8), waveEvent.type, waveEvent.code);
         handleCtrlShiftState(tabView.webContents, waveEvent);
         setWasActive(true);
-        if (input.type == "keyDown" && tabView.keyboardChordMode) {
-            e.preventDefault();
-            tabView.setKeyboardChordMode(false);
-            tabView.webContents.send("reinject-key", waveEvent);
-            return;
-        }
-
         if (unamePlatform === "win32" && input.type == "keyDown") {
             if (handleWindowsMenuAccelerators(waveEvent, tabView, fullConfig)) {
                 e.preventDefault();

@@ -111,7 +111,6 @@ declare global {
         onReinjectKey: (callback: (waveEvent: WaveKeyboardEvent) => void) => void; // reinject-key
         setWebviewFocus: (focusedId: number) => void; // webview-focus, focusedId is the getWebContentsId of the webview
         registerGlobalWebviewKeys: (keys: string[]) => void; // register-global-webview-keys
-        registerWebviewChordTriggerKeys: (keys: string[]) => void; // register-webview-chord-trigger-keys
         onControlShiftStateUpdate: (callback: (state: boolean) => void) => void; // control-shift-state-update
         onWavetermWindowFocusChange: (callback: (focused: boolean) => void) => void; // wave-window-focus
         createWorkspace: () => void; // create-workspace
@@ -127,7 +126,6 @@ declare global {
         onQuicklook: (filePath: string) => void; // quicklook
         openNativePath(filePath: string): void; // open-native-path
         captureScreenshot(rect: Electron.Rectangle): Promise<string>; // capture-screenshot
-        setKeyboardChordMode: () => void; // set-keyboard-chord-mode
         clearWebviewStorage: (webContentsId: number) => Promise<void>; // clear-webview-storage
         setWaveAIOpen: (isOpen: boolean) => void; // set-waveai-open
         closeBuilderWindow: () => void; // close-builder-window

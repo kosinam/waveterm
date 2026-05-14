@@ -1413,7 +1413,6 @@ declare global {
         "app:confirmquit"?: boolean;
         "app:hideaibutton"?: boolean;
         "app:hidewidgetpanel"?: boolean;
-        "app:chordprefix"?: string;
         "app:disablectrlshiftarrows"?: boolean;
         "app:disablectrlshiftdisplay"?: boolean;
         "app:focusfollowscursor"?: string;

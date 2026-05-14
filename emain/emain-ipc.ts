@@ -22,7 +22,7 @@ import {
 import { createBuilderWindow, getAllBuilderWindows, getBuilderWindowByWebContentsId } from "./emain-builder";
 import { log } from "./emain-log";
 import { callWithOriginalXdgCurrentDesktopAsync, unamePlatform } from "./emain-platform";
-import { getWaveTabViewByWebContentsId, setWebviewChordTriggerKeys, setWebviewKeys } from "./emain-tabview";
+import { getWaveTabViewByWebContentsId, setWebviewKeys } from "./emain-tabview";
 import { handleCtrlShiftState } from "./emain-util";
 import { getWaveVersion } from "./emain-wavesrv";
 import { createNewWaveWindow, getWaveWindowByWebContentsId } from "./emain-window";
@@ -290,16 +290,6 @@ export function initIpcHandlers() {
 
     electron.ipcMain.on("register-global-webview-keys", (event, keys: string[]) => {
         setWebviewKeys(keys ?? []);
-    });
-
-    electron.ipcMain.on("register-webview-chord-trigger-keys", (event, keys: string[]) => {
-        setWebviewChordTriggerKeys(keys ?? []);
-    });
-
-    electron.ipcMain.on("set-keyboard-chord-mode", (event) => {
-        event.returnValue = null;
-        const tabView = getWaveTabViewByWebContentsId(event.sender.id);
-        tabView?.setKeyboardChordMode(true);
     });
 
     electron.ipcMain.handle("set-is-active", () => {

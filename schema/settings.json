@@ -32,9 +32,6 @@
         "app:hidewidgetpanel": {
           "type": "boolean"
         },
-        "app:chordprefix": {
-          "type": "string"
-        },
         "app:disablectrlshiftarrows": {
           "type": "boolean"
         },

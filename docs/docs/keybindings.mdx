@@ -4,7 +4,7 @@ id: "keybindings"
 title: "Key Bindings"
 ---
 
-import { Kbd, KbdChord } from "@site/src/components/kbd";
+import { Kbd } from "@site/src/components/kbd";
 import { PlatformProvider, PlatformSelectorButton } from "@site/src/components/platformcontext";
 
 <PlatformProvider>
@@ -14,8 +14,6 @@ Some keybindings are always active. Others are only active for certain types of 
 
 Note that these are the MacOS keybindings (they use "Cmd"). For Windows and Linux,
 replace "Cmd" with "Alt" (note that "Ctrl" is "Ctrl" on both Mac, Windows, and Linux).
-
-Chords are shown with a + between the keys. You have 2 seconds to hit the 2nd chord key after typing the first key. Hitting Escape after an initial chord key will always be a no-op.
 
 ## Global Keybindings
 
@@ -29,10 +27,6 @@ Chords are shown with a + between the keys. You have 2 seconds to hit the 2nd ch
 | <Kbd k="Cmd:Shift:a"/>                            | Toggle WaveAI panel visibility                                                                                                                         |
 | <Kbd k="Cmd:d"/>                                  | Split horizontally, open a new block to the right                                                                                                      |
 | <Kbd k="Cmd:Shift:d"/>                            | Split vertically, open a new block below                                                                                                               |
-| <KbdChord karr={["Ctrl:Shift:s", "ArrowUp"]}/>    | Split vertically, open a new block above                                                                                                               |
-| <KbdChord karr={["Ctrl:Shift:s", "ArrowDown"]}/>  | Split vertically, open a new block below                                                                                                               |
-| <KbdChord karr={["Ctrl:Shift:s", "ArrowLeft"]}/>  | Split horizontally, open a new block to the left                                                                                                       |
-| <KbdChord karr={["Ctrl:Shift:s", "ArrowRight"]}/> | Split horizontally, open a new block to the right                                                                                                      |
 | <Kbd k="Cmd:Shift:n"/>                            | Open a new window                                                                                                                                      |
 | <Kbd k="Cmd:w"/>                                  | Close the current block                                                                                                                                |
 | <Kbd k="Cmd:Shift:w"/>                            | Close the current tab                                                                                                                                  |

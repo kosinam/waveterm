@@ -49,7 +49,6 @@ const previewElectronApi: ElectronApi = {
     onQuicklook: (_filePath: string) => {},
     openNativePath: (_filePath: string) => {},
     captureScreenshot: (_rect: Electron.Rectangle) => Promise.resolve(""),
-    setKeyboardChordMode: () => {},
     clearWebviewStorage: (_webContentsId: number) => Promise.resolve(),
     setWaveAIOpen: (_isOpen: boolean) => {},
     closeBuilderWindow: () => {},
