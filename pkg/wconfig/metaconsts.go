@@ -22,6 +22,7 @@ const (
 	ConfigKey_AppBlockBorderColor            = "app:blockbordercolor"
 	ConfigKey_AppDimUnfocusedBlocks          = "app:dimunfocusedblocks"
 
+	ConfigKey_AgentClearReadAfterMs             = "agent:clearreadafterms"
 	ConfigKey_AgentShellNotificationThresholdMs = "agent:shellnotificationthresholdms"
 
 	ConfigKey_FeatureWaveAppBuilder          = "feature:waveappbuilder"

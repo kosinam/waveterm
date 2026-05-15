@@ -73,6 +73,7 @@ type SettingsType struct {
 	AppBlockBorderColor           string   `json:"app:blockbordercolor,omitempty"`
 	AppDimUnfocusedBlocks         *float64 `json:"app:dimunfocusedblocks,omitempty"`
 
+	AgentClearReadAfterMs             float64 `json:"agent:clearreadafterms,omitempty"`
 	AgentShellNotificationThresholdMs float64 `json:"agent:shellnotificationthresholdms,omitempty"`
 
 	FeatureWaveAppBuilder bool `json:"feature:waveappbuilder,omitempty"`

@@ -297,9 +297,9 @@ The focused block border and resize handles now use a dedicated `--block-border-
   { "app:blockbordercolor": "rgb(160, 30, 30)" }
   ```
   Any CSS color value is accepted (`"#ff0000"`, `"red"`, `"hsl(0,100%,50%)"`, etc.).
-- Shell notifications are suppressed if a completion was seen within 10 seconds. The threshold is configurable:
+- Shell command notifications are auto-cleared 1 minute after being read. AI agent notifications (Claude, Codex, etc.) remain until explicitly dismissed. Both the shell auto-clear delay and the shell suppression threshold are configurable:
   ```json
-  { "agent:shellnotificationthresholdms": 10000 }
+  { "agent:clearreadafterms": 60000, "agent:shellnotificationthresholdms": 10000 }
   ```
 
 ---

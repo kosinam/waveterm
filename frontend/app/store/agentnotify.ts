@@ -15,7 +15,13 @@ import { waveEventSubscribeSingle } from "./wps";
 export const agentNotificationsAtom: PrimitiveAtom<AgentNotification[]> = atom([] as AgentNotification[]);
 
 const readIdsStorageKey = "agentNotifyReadIds";
+const defaultShellPruneAgeMs = 60 * 1000;
+const shellPruneCheckIntervalMs = 30 * 1000;
+const shellPruneAgeKey: keyof SettingsType = "agent:clearreadafterms";
+const pendingPruneIds = new Set<string>();
 const unreadStatuses = new Set(["completion", "question", "waiting", "error"]);
+
+let shellPruneInterval: number | null = null;
 
 function areAgentNotificationsEqual(a: AgentNotification, b: AgentNotification): boolean {
     return (
@@ -165,6 +171,44 @@ export const agentUnreadCountAtom = atom((get) => {
     return notifications.filter((n) => !readIds.has(n.notifyid) && n.lifecycle !== "intermediate").length;
 });
 
+function getShellPruneAgeMs(): number {
+    let configuredValue: unknown;
+    try {
+        configuredValue = globalStore.get(atoms.settingsAtom)?.[shellPruneAgeKey];
+    } catch {
+        return defaultShellPruneAgeMs;
+    }
+    if (typeof configuredValue !== "number" || !Number.isFinite(configuredValue)) {
+        return defaultShellPruneAgeMs;
+    }
+    return configuredValue;
+}
+
+function pruneReadShellNotifications(): void {
+    const pruneAgeMs = getShellPruneAgeMs();
+    if (pruneAgeMs < 0) return;
+
+    const now = Date.now();
+    const notifications = globalStore.get(agentNotificationsAtom);
+    const readIds = globalStore.get(agentReadIdsAtom);
+    for (const notification of notifications) {
+        if (notification.agent !== "shell") continue;
+        if (!readIds.has(notification.notifyid)) continue;
+        if (!(notification.timestamp > 0)) continue;
+        if (now - notification.timestamp < pruneAgeMs) continue;
+        if (pendingPruneIds.has(notification.notifyid)) continue;
+
+        pendingPruneIds.add(notification.notifyid);
+        fireAndForget(async () => {
+            try {
+                await RpcApi.ClearAgentNotificationCommand(TabRpcClient, notification.notifyid);
+            } finally {
+                pendingPruneIds.delete(notification.notifyid);
+            }
+        });
+    }
+}
+
 export function markAgentNotificationRead(notifyId: string): void {
     globalStore.set(agentReadIdsAtom, (prev) => {
         if (prev.has(notifyId)) return prev;
@@ -173,6 +217,7 @@ export function markAgentNotificationRead(notifyId: string): void {
         saveReadIdsToStorage(next);
         return next;
     });
+    pruneReadShellNotifications();
 }
 
 function clearAgentNotificationReadState(notifyId: string): void {
@@ -245,8 +290,14 @@ function flashBlockIfVisible(notification: AgentNotification): void {
 }
 
 export function setupAgentNotifySubscription(): void {
+    if (shellPruneInterval == null) {
+        pruneReadShellNotifications();
+        shellPruneInterval = window.setInterval(pruneReadShellNotifications, shellPruneCheckIntervalMs);
+    }
+
     const refreshReadIdsFromStorage = () => {
         globalStore.set(agentReadIdsAtom, loadReadIdsFromStorage());
+        pruneReadShellNotifications();
     };
 
     // Sync read IDs across renderers: when another renderer marks a notification as read,
@@ -287,6 +338,21 @@ export function setupAgentNotifySubscription(): void {
     );
 
     waveEventSubscribeSingle({
+        eventType: "blockclose",
+        handler: (event) => {
+            const blockId = event.data as string;
+            if (!blockId) return;
+            const oref = `block:${blockId}`;
+            const notifications = globalStore.get(agentNotificationsAtom);
+            for (const notification of notifications) {
+                if (notification.oref === oref) {
+                    clearAgentNotification(notification.notifyid);
+                }
+            }
+        },
+    });
+
+    waveEventSubscribeSingle({
         eventType: "agent:notify",
         handler: (event) => {
             const data = event.data as AgentNotifyEvent;
@@ -298,6 +364,7 @@ export function setupAgentNotifySubscription(): void {
                 inProgressClearTimeouts.forEach((id) => clearTimeout(id));
                 inProgressClearTimeouts.clear();
                 inProgressStartMs.clear();
+                pendingPruneIds.clear();
                 globalStore.set(agentNotificationsAtom, []);
                 globalStore.set(agentInProgressAtom, new Map());
                 globalStore.set(agentReadIdsAtom, new Set<string>());
@@ -307,6 +374,7 @@ export function setupAgentNotifySubscription(): void {
             if (data.clear && data.notifyid) {
                 cancelInProgressIdleTimeout(data.notifyid);
                 inProgressStartMs.delete(data.notifyid);
+                pendingPruneIds.delete(data.notifyid);
                 globalStore.set(agentNotificationsAtom, (prev) => prev.filter((n) => n.notifyid !== data.notifyid));
                 globalStore.set(agentInProgressAtom, (prev) => {
                     if (!prev.has(data.notifyid!)) return prev;
@@ -373,6 +441,7 @@ export function setupAgentNotifySubscription(): void {
                 return sortAgentNotifications([...prev, incoming]);
             });
             flashBlockIfVisible(incoming);
+            pruneReadShellNotifications();
         },
     });
 }
@@ -382,6 +451,7 @@ export async function loadAgentNotifications(): Promise<void> {
         const notifications = await RpcApi.GetAllAgentNotificationsCommand(TabRpcClient);
         if (notifications == null) return;
         globalStore.set(agentNotificationsAtom, sortAgentNotifications(notifications));
+        pruneReadShellNotifications();
     } catch (_) {
         // Non-fatal — panel will be empty on load failure
     }
