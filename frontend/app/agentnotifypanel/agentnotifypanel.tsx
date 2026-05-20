@@ -1,7 +1,7 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-import { agentNotificationsAtom, agentReadIdsAtom, clearAllAgentNotifications, markAgentNotificationRead } from "@/app/store/agentnotify";
+import { agentReadIdsAtom, clearAllAgentNotifications, markAgentNotificationRead, sortedAgentNotificationsAtom } from "@/app/store/agentnotify";
 import { recordCurrentFocusLocation, setPendingFocusNavigation } from "@/app/store/focus-history";
 import { atoms } from "@/app/store/global";
 import { getLayoutModelForStaticTab } from "@/layout/index";
@@ -102,7 +102,7 @@ function getApi(): ElectronApi {
 }
 
 export const AgentNotifyPanel = memo(() => {
-    const notifications = useAtomValue(agentNotificationsAtom);
+    const notifications = useAtomValue(sortedAgentNotificationsAtom);
     const readIds = useAtomValue(agentReadIdsAtom);
 
     const handleNavigate = useCallback((n: AgentNotification) => {

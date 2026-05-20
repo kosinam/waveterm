@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { BlockModel } from "@/app/block/block-model";
-import { atoms } from "@/app/store/global-atoms";
+import { atoms, WOS } from "@/app/store/global";
 import { RpcApi } from "@/app/store/wshclientapi";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
 import { getLayoutModelForStaticTab } from "@/layout/index";
@@ -169,6 +169,41 @@ export const agentUnreadCountAtom = atom((get) => {
     const notifications = get(agentNotificationsAtom);
     const readIds = get(agentReadIdsAtom);
     return notifications.filter((n) => !readIds.has(n.notifyid) && n.lifecycle !== "intermediate").length;
+});
+
+// Derived list of notifications sorted by tab position (left-to-right in the tab bar),
+// then by pane position within a tab, then by timestamp.
+export const sortedAgentNotificationsAtom = atom((get) => {
+    const notifications = get(agentNotificationsAtom);
+    const workspace = get(atoms.workspace);
+    const tabIds: string[] = workspace?.tabids ?? [];
+
+    const tabIndexMap = new Map<string, number>();
+    tabIds.forEach((tabId, i) => tabIndexMap.set(tabId, i));
+
+    const blockPositionMap = new Map<string, number>();
+    for (const tabId of tabIds) {
+        const tab = WOS.getObjectValue<Tab>(WOS.makeORef("tab", tabId), get);
+        if (!tab?.layoutstate) continue;
+        const layoutState = WOS.getObjectValue<LayoutState>(WOS.makeORef("layout", tab.layoutstate), get);
+        if (!layoutState?.leaforder) continue;
+        layoutState.leaforder.forEach((entry, i) => blockPositionMap.set(entry.blockid, i));
+    }
+
+    return [...notifications].sort((a, b) => {
+        const tabA = tabIndexMap.get(a.tabid) ?? Number.MAX_SAFE_INTEGER;
+        const tabB = tabIndexMap.get(b.tabid) ?? Number.MAX_SAFE_INTEGER;
+        if (tabA !== tabB) return tabA - tabB;
+
+        const blockIdA = a.oref?.split(":")[1];
+        const blockIdB = b.oref?.split(":")[1];
+        const blockA = blockIdA != null ? (blockPositionMap.get(blockIdA) ?? Number.MAX_SAFE_INTEGER) : Number.MAX_SAFE_INTEGER;
+        const blockB = blockIdB != null ? (blockPositionMap.get(blockIdB) ?? Number.MAX_SAFE_INTEGER) : Number.MAX_SAFE_INTEGER;
+        if (blockA !== blockB) return blockA - blockB;
+
+        if (a.timestamp !== b.timestamp) return a.timestamp - b.timestamp;
+        return a.notifyid.localeCompare(b.notifyid);
+    });
 });
 
 function getShellPruneAgeMs(): number {

@@ -106,7 +106,8 @@ export function isSameFocusLocation(a: FocusLocation | null, b: FocusLocation | 
         a.workspaceId === b.workspaceId &&
         a.tabId === b.tabId &&
         a.focusType === b.focusType &&
-        (a.blockId ?? null) === (b.blockId ?? null)
+        (a.blockId ?? null) === (b.blockId ?? null) &&
+        (a.magnifiedNodeId ?? null) === (b.magnifiedNodeId ?? null)
     );
 }
 

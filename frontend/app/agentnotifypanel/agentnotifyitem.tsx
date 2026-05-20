@@ -65,7 +65,7 @@ export const AgentNotifyItem = memo(({ notification, isRead, onNavigate, getStat
     const tabFlagColor = useAtomValue(getTabMetaKeyAtom(notification.tabid ?? "", "tab:flagcolor"));
     const flagColor = tabFlagColor ? `color-mix(in srgb, ${tabFlagColor} 60%, white)` : "#ffffff";
 
-    const topicColor = isRead ? "text-yellow-400/80" : "text-yellow-300";
+    const topicColor = isRead ? "text-primary/60" : "text-white/75";
     const metaColor = isRead ? "text-secondary/70" : "text-white/75";
 
     const unreadBg = isShellCompletion
@@ -78,13 +78,11 @@ export const AgentNotifyItem = memo(({ notification, isRead, onNavigate, getStat
             ? "bg-red-800/70 hover:bg-red-800/80"
             : "bg-blue-700/80 hover:bg-blue-700/90";
 
-    const pulsePeak = tabFlagColor
-        ? `color-mix(in srgb, ${tabFlagColor} 25%, transparent)`
-        : "rgba(255, 255, 255, 0.12)";
+    const pulsePeak = "rgba(255, 255, 255, 0.18)";
     const showAccentBorder = !isRead && !isInProgress;
     const itemStyle: React.CSSProperties = {
         ...(isInProgress
-            ? ({ animation: "agent-bg-pulse-dynamic 2.5s ease-in-out infinite", "--pulse-color": pulsePeak } as React.CSSProperties)
+            ? ({ animation: "agent-bg-pulse-dynamic 3s ease-in-out infinite", "--pulse-color": pulsePeak } as React.CSSProperties)
             : {}),
         ...(showAccentBorder ? { boxShadow: "inset 0 0 0 2px var(--block-border-color)" } : {}),
     };
@@ -180,7 +178,7 @@ export const AgentNotifyItem = memo(({ notification, isRead, onNavigate, getStat
                                         {formatTime(notification.timestamp)}
                                     </span>
                                 )}
-                                {notification.message}
+                                <span className="italic">{notification.message}</span>
                             </div>
                         </div>
                     )}
