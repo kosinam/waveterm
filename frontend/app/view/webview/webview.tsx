@@ -16,7 +16,7 @@ import { openLink } from "@/store/global";
 import { adaptFromReactOrNativeKeyEvent, checkKeyPressed } from "@/util/keyutil";
 import { fireAndForget, useAtomValueSafe } from "@/util/util";
 import clsx from "clsx";
-import { offset, useFloating } from "@floating-ui/react";
+import { offset, size, useFloating } from "@floating-ui/react";
 import { WebviewTag } from "electron";
 import { Atom, PrimitiveAtom, atom, useAtomValue, useSetAtom } from "jotai";
 import { Fragment, createRef, memo, useCallback, useEffect, useRef, useState } from "react";
@@ -863,10 +863,18 @@ const InlineUrlSuggestions = memo(({ model }: { model: WebViewModel }) => {
     const query = useAtomValue(model.url);
     const suggestions = useAtomValue(model.inlineSuggestions);
     const selectedIndex = useAtomValue(model.inlineSuggestionIndex);
+    const [floatingWidth, setFloatingWidth] = useState<number>(384);
     const { refs, floatingStyles } = useFloating({
         placement: "bottom-start",
         strategy: "absolute",
-        middleware: [offset(4)],
+        middleware: [
+            offset(4),
+            size({
+                apply({ rects }) {
+                    setFloatingWidth(rects.reference.width);
+                },
+            }),
+        ],
     });
     const reqNumRef = useRef(0);
 
@@ -898,8 +906,8 @@ const InlineUrlSuggestions = memo(({ model }: { model: WebViewModel }) => {
     return (
         <div
             ref={refs.setFloating}
-            style={floatingStyles}
-            className="w-96 rounded-lg bg-modalbg shadow-lg border border-gray-700 z-[var(--zindex-typeahead-modal)] absolute overflow-hidden"
+            style={{ ...floatingStyles, width: floatingWidth }}
+            className="rounded-lg bg-modalbg shadow-lg border border-gray-700 z-[var(--zindex-typeahead-modal)] absolute overflow-hidden"
             onMouseDown={(e) => e.preventDefault()}
         >
             {suggestions.length > 0 ? (
