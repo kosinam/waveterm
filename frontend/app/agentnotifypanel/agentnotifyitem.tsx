@@ -3,7 +3,7 @@
 
 import { agentInProgressAtom, clearAgentNotification, getInProgressStartMs } from "@/app/store/agentnotify";
 import { getTabMetaKeyAtom } from "@/app/store/global";
-import { cn } from "@/util/util";
+import { cn, isLocalConnName } from "@/util/util";
 import { useAtomValue } from "jotai";
 import { memo, useCallback, useEffect, useState } from "react";
 
@@ -27,6 +27,15 @@ function shortenBranch(branch: string): string {
     if (!branch) return "";
     if (branch.length <= 24) return branch;
     return branch.substring(0, 22) + "…";
+}
+
+function getConnHostname(connName: string): string {
+    if (!connName || isLocalConnName(connName)) return "";
+    if (connName.startsWith("wsl://")) return connName.slice(6);
+    const atIdx = connName.indexOf("@");
+    const host = atIdx >= 0 ? connName.slice(atIdx + 1) : connName;
+    const dotIdx = host.indexOf(".");
+    return dotIdx >= 0 ? host.slice(0, dotIdx) : host;
 }
 
 interface AgentNotifyItemProps {
@@ -61,6 +70,12 @@ export const AgentNotifyItem = memo(({ notification, isRead, onNavigate, getStat
         const id = setInterval(update, 1000);
         return () => clearInterval(id);
     }, [isInProgress, notification.notifyid]);
+
+    const connName = notification.connection ?? "";
+    const isRemote = !isLocalConnName(connName);
+    const connHostname = isRemote ? getConnHostname(connName) : "";
+    const workdirDisplay =
+        connHostname && notification.workdir ? `${connHostname}:${notification.workdir}` : notification.workdir;
 
     const tabFlagColor = useAtomValue(getTabMetaKeyAtom(notification.tabid ?? "", "tab:flagcolor"));
     const flagColor = tabFlagColor ? `color-mix(in srgb, ${tabFlagColor} 60%, white)` : "#ffffff";
@@ -131,8 +146,19 @@ export const AgentNotifyItem = memo(({ notification, isRead, onNavigate, getStat
                             )}
                             {notification.workdir && (
                                 <span className="flex items-center gap-1 text-[10px] min-w-0">
-                                    <i className="fa-solid fa-folder shrink-0" style={{ fontSize: "9px", color: folderBlue }} />
-                                    <span className="truncate" style={{ color: folderBlueText }}>{notification.workdir}</span>
+                                    <i
+                                        className={cn(
+                                            isRemote
+                                                ? "fa-solid fa-arrow-right-arrow-left"
+                                                : "fa-solid fa-laptop",
+                                            "shrink-0"
+                                        )}
+                                        style={{
+                                            fontSize: "9px",
+                                            color: isRemote ? folderBlue : "var(--color-secondary)",
+                                        }}
+                                    />
+                                    <span className="truncate" style={{ color: folderBlueText }}>{workdirDisplay}</span>
                                 </span>
                             )}
                         </div>

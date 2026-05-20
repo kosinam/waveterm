@@ -22,6 +22,7 @@ type AgentNotification struct {
 	Timestamp     int64  `json:"timestamp"`               // unix ms
 	WorkspaceName string `json:"workspacename,omitempty"` // filled by backend
 	TabName       string `json:"tabname,omitempty"`       // filled by backend
+	Connection    string `json:"connection,omitempty"`    // filled by backend from block meta
 }
 
 // AgentNotifyEvent is the payload for Event_AgentNotify events.

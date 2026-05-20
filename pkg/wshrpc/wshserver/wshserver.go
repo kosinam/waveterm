@@ -1562,6 +1562,9 @@ func (ws *WshServer) AgentNotifyCommand(ctx context.Context, data baseds.AgentNo
 	if data.ORef != "" {
 		oref, err := waveobj.ParseORef(data.ORef)
 		if err == nil && oref.OType == waveobj.OType_Block {
+			if block, err2 := wstore.DBGet[*waveobj.Block](ctx, oref.OID); err2 == nil && block != nil {
+				data.Connection = block.Meta.GetString(waveobj.MetaKey_Connection, "")
+			}
 			tabId, err := wstore.DBFindTabForBlockId(ctx, oref.OID)
 			if err == nil {
 				data.TabId = tabId
