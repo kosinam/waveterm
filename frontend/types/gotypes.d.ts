@@ -1224,6 +1224,7 @@ declare global {
         "web:partition"?: string;
         "web:useragenttype"?: string;
         "web:darkreader"?: boolean;
+        "web:isolate"?: boolean;
         "markdown:fontsize"?: number;
         "markdown:fixedfontsize"?: number;
         "tsunami:*"?: boolean;

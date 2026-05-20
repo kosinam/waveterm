@@ -76,6 +76,7 @@ export class WebViewModel implements ViewModel {
     partitionOverride: PrimitiveAtom<string> | null;
     userAgentType: Atom<string>;
     darkReaderEnabled: Atom<boolean>;
+    isolateSession: Atom<boolean>;
     env: WebViewEnv;
     ctrlShiftUnsubFn: (() => void) | null = null;
 
@@ -120,6 +121,7 @@ export class WebViewModel implements ViewModel {
             return !!get(darkReaderSettingAtom);
         });
 
+        this.isolateSession = this.env.getBlockMetaKeyAtom(blockId, "web:isolate");
         this.mediaPlaying = atom(false);
         this.mediaMuted = atom(false);
 
@@ -794,6 +796,7 @@ export class WebViewModel implements ViewModel {
         ];
 
         const isNavHidden = globalStore.get(this.hideNav);
+        const isIsolated = globalStore.get(this.isolateSession);
         return [
             {
                 label: "Copy URL to Clipboard",
@@ -824,6 +827,18 @@ export class WebViewModel implements ViewModel {
                         return this.env.rpc.SetMetaCommand(TabRpcClient, {
                             oref: makeORef("block", this.blockId),
                             meta: { "web:hidenav": !isNavHidden },
+                        });
+                    }),
+            },
+            {
+                label: "Isolate Session",
+                type: "checkbox",
+                checked: !!isIsolated,
+                click: () =>
+                    fireAndForget(() => {
+                        return this.env.rpc.SetMetaCommand(TabRpcClient, {
+                            oref: makeORef("block", this.blockId),
+                            meta: { "web:isolate": !isIsolated },
                         });
                     }),
             },
@@ -986,7 +1001,8 @@ const WebView = memo(({ model, onFailLoad, blockRef, initialSrc }: WebViewProps)
     const zoomFactor = useAtomValue(env.getBlockMetaKeyAtom(model.blockId, "web:zoom")) || 1;
     const partitionOverride = useAtomValueSafe(model.partitionOverride);
     const metaPartition = useAtomValue(env.getBlockMetaKeyAtom(model.blockId, "web:partition"));
-    const webPartition = partitionOverride || metaPartition || undefined;
+    const isIsolated = useAtomValue(model.isolateSession);
+    const webPartition = partitionOverride || metaPartition || (isIsolated ? `persist:wave-${model.blockId}` : undefined);
     const userAgentType = useAtomValue(model.userAgentType) || "default";
     const darkReaderEnabled = useAtomValue(model.darkReaderEnabled);
 
@@ -1239,6 +1255,7 @@ const WebView = memo(({ model, onFailLoad, blockRef, initialSrc }: WebViewProps)
         <Fragment>
             <MockBoundary fallback={<WebViewPreviewFallback url={metaUrl} />}>
                 <webview
+                    key={webPartition ?? "default"}
                     id="webview"
                     className="webview"
                     ref={model.webviewRef}
