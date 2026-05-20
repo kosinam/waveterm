@@ -153,6 +153,7 @@ func (cm *ConnMonitor) checkConnection() {
 	timeSinceKeepAlive := cm.getTimeSinceKeepAlive()
 	if timeSinceKeepAlive > stalledThreshold {
 		cm.setConnHealthStatus(ConnHealthStatus_Stalled)
+		cm.Client.Close() // force waitForDisconnect to return so autoReconnectLoop can fire
 	}
 }
 

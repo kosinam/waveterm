@@ -92,6 +92,7 @@ type SSHConn struct {
 	LastConnectTime    int64
 	ActiveConnNum      int
 	Monitor            *ConnMonitor // will not be nil
+	noAutoReconnect    bool         // set true on explicit Close(); reset false on successful Connect()
 }
 
 var ConnServerCmdTemplate = strings.TrimSpace(
@@ -187,6 +188,7 @@ func (conn *SSHConn) Close() error {
 
 	defer conn.FireConnChangeEvent()
 	conn.WithLock(func() {
+		conn.noAutoReconnect = true
 		if conn.Status == Status_Connected || conn.Status == Status_Connecting {
 			// if status is init, disconnected, or error don't change it
 			conn.Status = Status_Disconnected
@@ -773,6 +775,7 @@ func (conn *SSHConn) Connect(ctx context.Context, connFlags *wconfig.ConnKeyword
 		conn.Infof(ctx, "successfully connected (wsh:%v)\n\n", conn.WshEnabled.Load())
 		conn.WithLock(func() {
 			conn.Status = Status_Connected
+			conn.noAutoReconnect = false
 			conn.LastConnectTime = time.Now().UnixMilli()
 			if conn.ActiveConnNum == 0 {
 				conn.ActiveConnNum = int(activeConnCounter.Add(1))
@@ -972,6 +975,7 @@ func (conn *SSHConn) connectInternal(ctx context.Context, connFlags *wconfig.Con
 			panichandler.PanicHandler("conncontroller:waitForDisconnect", recover())
 		}()
 		conn.waitForDisconnect()
+		conn.autoReconnectLoop()
 	}()
 	fmtAddr := knownhosts.Normalize(fmt.Sprintf("%s@%s", client.User(), client.RemoteAddr().String()))
 	conn.Infof(ctx, "normalized knownhosts address: %s\n", fmtAddr)
@@ -1022,6 +1026,44 @@ func (conn *SSHConn) waitForDisconnect() {
 		}
 	})
 	conn.closeInternal_withlifecyclelock()
+}
+
+var autoReconnectBackoff = []time.Duration{
+	2 * time.Second,
+	4 * time.Second,
+	8 * time.Second,
+	16 * time.Second,
+	32 * time.Second,
+	60 * time.Second,
+}
+
+func (conn *SSHConn) autoReconnectLoop() {
+	if WithLockRtn(conn, func() bool { return conn.noAutoReconnect }) {
+		return
+	}
+	for attempt := 0; attempt < 10; attempt++ {
+		delay := autoReconnectBackoff[min(attempt, len(autoReconnectBackoff)-1)]
+		log.Printf("[conn:%s] auto-reconnect: waiting %v before attempt %d", conn.GetName(), delay, attempt+1)
+		time.Sleep(delay)
+
+		if conn.GetStatus() == Status_Connected {
+			return // already reconnected (e.g., user clicked Reconnect manually)
+		}
+		if WithLockRtn(conn, func() bool { return conn.noAutoReconnect }) {
+			return // user explicitly disconnected during sleep
+		}
+
+		log.Printf("[conn:%s] auto-reconnect: attempt %d", conn.GetName(), attempt+1)
+		ctx, cancelFn := context.WithTimeout(context.Background(), DefaultConnectionTimeout)
+		err := conn.Connect(ctx, &wconfig.ConnKeywords{})
+		cancelFn()
+		if err == nil {
+			log.Printf("[conn:%s] auto-reconnect: succeeded on attempt %d", conn.GetName(), attempt+1)
+			return
+		}
+		log.Printf("[conn:%s] auto-reconnect: attempt %d failed: %v", conn.GetName(), attempt+1, err)
+	}
+	log.Printf("[conn:%s] auto-reconnect: giving up after 10 attempts", conn.GetName())
 }
 
 func (conn *SSHConn) SetWshError(err error) {

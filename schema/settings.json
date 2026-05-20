@@ -59,6 +59,9 @@
         "app:dimunfocusedblocks": {
           "type": "number"
         },
+        "agent:clearreadafterms": {
+          "type": "number"
+        },
         "agent:shellnotificationthresholdms": {
           "type": "number"
         },
