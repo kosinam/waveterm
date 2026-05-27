@@ -319,9 +319,15 @@ function flashBlockIfVisible(notification: AgentNotification): void {
         bm.setBlockHighlight(null);
         setTimeout(() => {
             bm.setBlockHighlight({ blockId, borderOnly: true });
-            setTimeout(() => bm.setBlockHighlight(null), 300);
-        }, 150);
-    }, 300);
+            setTimeout(() => {
+                bm.setBlockHighlight(null);
+                setTimeout(() => {
+                    bm.setBlockHighlight({ blockId, borderOnly: true });
+                    setTimeout(() => bm.setBlockHighlight(null), 220);
+                }, 110);
+            }, 220);
+        }, 110);
+    }, 220);
 }
 
 export function setupAgentNotifySubscription(): void {

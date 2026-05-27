@@ -106,16 +106,22 @@ export class TabClient extends WshClient {
 
         layoutModel.focusNode(node.id);
 
-        // Double-flash the blue border (runs in this renderer — correct for both same-tab and cross-tab navigation)
+        // Triple-flash the blue border (runs in this renderer — correct for both same-tab and cross-tab navigation)
         const bm = BlockModel.getInstance();
         bm.setBlockHighlight({ blockId, borderOnly: true });
         setTimeout(() => {
             bm.setBlockHighlight(null);
             setTimeout(() => {
                 bm.setBlockHighlight({ blockId, borderOnly: true });
-                setTimeout(() => bm.setBlockHighlight(null), 300);
-            }, 150);
-        }, 300);
+                setTimeout(() => {
+                    bm.setBlockHighlight(null);
+                    setTimeout(() => {
+                        bm.setBlockHighlight({ blockId, borderOnly: true });
+                        setTimeout(() => bm.setBlockHighlight(null), 220);
+                    }, 110);
+                }, 220);
+            }, 110);
+        }, 220);
     }
 
     async handle_getfocusedblockdata(rh: RpcResponseHelper): Promise<FocusedBlockData> {

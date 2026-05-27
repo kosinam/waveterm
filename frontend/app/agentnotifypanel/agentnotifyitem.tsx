@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { agentInProgressAtom, clearAgentNotification, getInProgressStartMs } from "@/app/store/agentnotify";
-import { getTabMetaKeyAtom } from "@/app/store/global";
+import { getConnStatusAtom, getTabMetaKeyAtom } from "@/app/store/global";
 import { cn, isLocalConnName } from "@/util/util";
+import { computeConnColorNum } from "@/app/block/blockutil";
 import { useAtomValue } from "jotai";
 import { memo, useCallback, useEffect, useState } from "react";
 
@@ -76,11 +77,13 @@ export const AgentNotifyItem = memo(({ notification, isRead, onNavigate, getStat
     const connHostname = isRemote ? getConnHostname(connName) : "";
     const workdirDisplay =
         connHostname && notification.workdir ? `${connHostname}:${notification.workdir}` : notification.workdir;
+    const connStatus = useAtomValue(getConnStatusAtom(connName));
+    const remoteIconColor = `var(--conn-icon-color-${computeConnColorNum(connStatus)})`;
 
     const tabFlagColor = useAtomValue(getTabMetaKeyAtom(notification.tabid ?? "", "tab:flagcolor"));
     const flagColor = tabFlagColor ? `color-mix(in srgb, ${tabFlagColor} 60%, white)` : "#ffffff";
 
-    const topicColor = isRead ? "text-primary/60" : "text-white/75";
+    const topicColor = isRead ? "text-primary/80" : "text-white";
     const metaColor = isRead ? "text-secondary/70" : "text-white/75";
 
     const unreadBg = isShellCompletion
@@ -131,7 +134,7 @@ export const AgentNotifyItem = memo(({ notification, isRead, onNavigate, getStat
                 />
                 <div className={cn("text-[11px] leading-tight flex-1 min-w-0", isRead ? "text-primary" : "text-white")}>
                     {notification.topic && (
-                        <div className={cn("font-semibold mb-0.5 line-clamp-1", topicColor)}>
+                        <div className={cn("font-bold mb-0.5 line-clamp-1", topicColor)}>
                             {notification.topic}
                         </div>
                     )}
@@ -155,7 +158,7 @@ export const AgentNotifyItem = memo(({ notification, isRead, onNavigate, getStat
                                         )}
                                         style={{
                                             fontSize: "9px",
-                                            color: isRemote ? folderBlue : "var(--color-secondary)",
+                                            color: isRemote ? remoteIconColor : "var(--color-secondary)",
                                         }}
                                     />
                                     <span className="truncate" style={{ color: folderBlueText }}>{workdirDisplay}</span>
@@ -204,7 +207,7 @@ export const AgentNotifyItem = memo(({ notification, isRead, onNavigate, getStat
                                         {formatTime(notification.timestamp)}
                                     </span>
                                 )}
-                                <span className="italic">{notification.message}</span>
+                                <span className={cn("italic", isRead ? "text-secondary/65" : "text-white/60")}>{notification.message}</span>
                             </div>
                         </div>
                     )}

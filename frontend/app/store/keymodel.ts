@@ -837,6 +837,11 @@ function registerGlobalKeys() {
         handleSplitVertical("after");
         return true;
     });
+    globalKeyMap.set("Alt:c{Quote}", () => {
+        // ' — alias for " split pane below
+        handleSplitVertical("after");
+        return true;
+    });
     globalKeyMap.set("Alt:Shift:c{KeyN}", () => {
         // N — new workspace
         fireAndForget(async () => {
@@ -871,6 +876,11 @@ function registerGlobalKeys() {
             return true;
         });
     }
+    globalKeyMap.set("Alt:c{Digit5}", () => {
+        // 5 — alias for % split pane right (overrides workspace-5 switch)
+        handleSplitHorizontal("after");
+        return true;
+    });
     globalKeyMap.set("Alt:Shift:c{Digit9}", () => {
         // ( — previous workspace
         switchWorkspaceByOffset(-1);
