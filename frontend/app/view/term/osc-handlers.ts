@@ -5,6 +5,7 @@ import { RpcApi } from "@/app/store/wshclientapi";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
 import {
     getApi,
+    getBlockComponentModel,
     getBlockMetaKeyAtom,
     getBlockTermDurableAtom,
     getOverrideConfigAtom,
@@ -429,6 +430,11 @@ export function handleOsc16162Command(data: string, blockId: string, loaded: boo
             rtInfo["shell:state"] = "ready";
             globalStore.set(termWrap.shellIntegrationStatusAtom, "ready");
             globalStore.set(termWrap.claudeCodeActiveAtom, false);
+            // Refresh git status on each prompt (covers command-done and cd). Debounced in the model.
+            {
+                const vm = getBlockComponentModel(blockId)?.viewModel as any;
+                vm?.refreshGitStatus?.();
+            }
             const marker = terminal.registerMarker(0);
             if (marker) {
                 termWrap.promptMarkers.push(marker);

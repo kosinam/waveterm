@@ -123,11 +123,11 @@ svg [aria-label="tip"] g path {
 }
 
 @keyframes agent-glow {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.2; }
+    0%, 100% { opacity: 1; text-shadow: 0 0 6px currentColor; }
+    50% { opacity: 0.15; text-shadow: none; }
 }
 
 @keyframes agent-bg-pulse-dynamic {
     0%, 100% { background-color: var(--pulse-color); }
-    50% { background-color: rgba(255, 255, 255, 0.05); }
+    50% { background-color: rgba(255, 255, 255, 0.02); }
 }

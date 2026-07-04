@@ -15,6 +15,7 @@ export interface VTabItem {
     badge?: Badge | null;
     badges?: Badge[] | null;
     flagColor?: string | null;
+    isAgentWorking?: boolean;
 }
 
 interface VTabProps {
@@ -172,6 +173,21 @@ export function VTab({
                 isDragging && "opacity-50"
             )}
         >
+            {flagColor && (
+                <div
+                    className="pointer-events-none absolute inset-x-1 inset-y-[4px] rounded-sm"
+                    style={{ backgroundColor: flagColor, opacity: 0.18 }}
+                />
+            )}
+            {tab.isAgentWorking && (
+                <div
+                    className="pointer-events-none absolute inset-x-1 inset-y-[4px] rounded-sm"
+                    style={{
+                        animation: "agent-bg-pulse-dynamic 2s ease-in-out infinite",
+                        "--pulse-color": "rgba(255,255,255,0.28)",
+                    } as React.CSSProperties}
+                />
+            )}
             {active && (
                 <div className="pointer-events-none absolute inset-x-1 inset-y-[4px] rounded-sm bg-foreground/10" />
             )}

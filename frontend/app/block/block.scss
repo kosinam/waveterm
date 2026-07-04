@@ -228,6 +228,77 @@
                             font-size: 11px;
                         }
                     }
+
+                    // git status badge: right-justified, prompt-colored, matches header text size
+                    .block-frame-div.block-frame-gitstatus {
+                        width: auto;
+                        height: auto;
+                        flex: 0 0 auto;
+                        margin-left: auto; // right-justify within the header text row
+                        justify-content: flex-end;
+                        align-items: center;
+                        gap: 5px;
+                        font: var(--fixed-font);
+                        font-size: 11px;
+                        cursor: pointer;
+                        border-radius: 3px;
+                        padding: 1px 4px;
+
+                        &:hover {
+                            background: var(--highlight-bg-color);
+                        }
+
+                        .wave-iconbutton {
+                            width: auto;
+                            height: auto;
+                            opacity: 1;
+                            cursor: pointer;
+                            font-size: 11px;
+                        }
+
+                        .block-frame-text {
+                            flex-grow: 0;
+                            opacity: 1;
+                            white-space: nowrap;
+                        }
+
+                        // colors mirror the shell prompt / terminal ANSI palette
+                        .gitstatus-branch {
+                            color: var(--term-bright-green);
+                        }
+
+                        .gitstatus-branch-dirty {
+                            color: var(--warning-color);
+                        }
+
+                        .gitstatus-ahead {
+                            color: var(--warning-color);
+                        }
+
+                        .gitstatus-behind {
+                            color: var(--term-bright-cyan);
+                        }
+
+                        .gitstatus-staged {
+                            color: var(--term-bright-green);
+                        }
+
+                        .gitstatus-modified {
+                            color: var(--term-bright-yellow);
+                        }
+
+                        .gitstatus-untracked {
+                            color: var(--term-bright-blue);
+                        }
+
+                        .gitstatus-add {
+                            color: var(--term-bright-green);
+                        }
+
+                        .gitstatus-del {
+                            color: var(--error-color);
+                        }
+                    }
                 }
 
                 .block-frame-end-icons {

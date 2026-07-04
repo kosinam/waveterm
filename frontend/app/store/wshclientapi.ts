@@ -762,6 +762,18 @@ export class RpcApiType {
         return client.wshRpcCall("remotegetinfo", null, opts);
     }
 
+    // command "remotegitdiff" [call]
+    RemoteGitDiffCommand(client: WshClient, data: CommandRemoteGitDiffData, opts?: RpcOpts): Promise<GitDiffResponse> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "remotegitdiff", data, opts);
+        return client.wshRpcCall("remotegitdiff", data, opts);
+    }
+
+    // command "remotegitstatus" [call]
+    RemoteGitStatusCommand(client: WshClient, data: CommandRemoteGitStatusData, opts?: RpcOpts): Promise<GitStatusResponse> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "remotegitstatus", data, opts);
+        return client.wshRpcCall("remotegitstatus", data, opts);
+    }
+
     // command "remoteinstallrcfiles" [call]
     RemoteInstallRcFilesCommand(client: WshClient, opts?: RpcOpts): Promise<void> {
         if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "remoteinstallrcfiles", null, opts);

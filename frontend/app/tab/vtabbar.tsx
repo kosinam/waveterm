@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { Tooltip } from "@/app/element/tooltip";
-import { agentUnreadCountAtom } from "@/app/store/agentnotify";
+import { agentUnreadCountAtom, getTabIsAgentWorkingAtom } from "@/app/store/agentnotify";
 import { getTabBadgeAtom } from "@/app/store/badge";
 import { makeORef } from "@/app/store/wos";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
@@ -154,6 +154,7 @@ function VTabWrapper({
     const env = useWaveEnv<VTabBarEnv>();
     const [tabData] = env.wos.useWaveObjectValue<Tab>(makeORef("tab", tabId));
     const badges = useAtomValue(getTabBadgeAtom(tabId, env));
+    const isAgentWorking = useAtomValue(getTabIsAgentWorkingAtom(tabId));
     const renameRef = useRef<(() => void) | null>(null);
 
     const rawFlagColor = tabData?.meta?.["tab:flagcolor"];
@@ -172,6 +173,7 @@ function VTabWrapper({
         name: tabData?.name ?? "",
         badges,
         flagColor,
+        isAgentWorking,
     };
 
     const handleContextMenu = useCallback(

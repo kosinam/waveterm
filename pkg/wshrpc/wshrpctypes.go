@@ -134,6 +134,8 @@ type WshRpcInterface interface {
 	BadgeWatchPidCommand(ctx context.Context, data CommandBadgeWatchPidData) error
 	RemoteProcessListCommand(ctx context.Context, data CommandRemoteProcessListData) (*ProcessListResponse, error)
 	RemoteProcessSignalCommand(ctx context.Context, data CommandRemoteProcessSignalData) error
+	RemoteGitStatusCommand(ctx context.Context, data CommandRemoteGitStatusData) (*GitStatusResponse, error)
+	RemoteGitDiffCommand(ctx context.Context, data CommandRemoteGitDiffData) (*GitDiffResponse, error)
 
 	// emain
 	WebSelectorCommand(ctx context.Context, data CommandWebSelectorData) ([]string, error)
@@ -962,4 +964,42 @@ type CommandRemoteProcessListData struct {
 type CommandRemoteProcessSignalData struct {
 	Pid    int32  `json:"pid"`
 	Signal string `json:"signal"`
+}
+
+type CommandRemoteGitStatusData struct {
+	Path string `json:"path"` // any path inside the repo (typically the terminal cwd)
+}
+
+type GitStatusResponse struct {
+	IsRepo      bool   `json:"isrepo"`
+	Branch      string `json:"branch,omitempty"`      // branch name, or short SHA when detached
+	Detached    bool   `json:"detached,omitempty"`    // true when HEAD is detached
+	HasUpstream bool   `json:"hasupstream,omitempty"` // true when the branch tracks an upstream
+	Ahead       int    `json:"ahead,omitempty"`       // commits ahead of upstream (unpushed)
+	Behind      int    `json:"behind,omitempty"`      // commits behind upstream
+	Staged      int    `json:"staged,omitempty"`      // files with staged changes
+	Modified    int    `json:"modified,omitempty"`    // files with unstaged changes
+	Untracked   int    `json:"untracked,omitempty"`   // untracked files
+	Insertions  int    `json:"insertions,omitempty"`  // added lines (staged + unstaged)
+	Deletions   int    `json:"deletions,omitempty"`   // removed lines (staged + unstaged)
+}
+
+type CommandRemoteGitDiffData struct {
+	Path string `json:"path"` // any path inside the repo (typically the terminal cwd)
+}
+
+type GitDiffResponse struct {
+	RepoRoot string        `json:"reporoot,omitempty"`
+	Files    []GitDiffFile `json:"files,omitempty"`
+}
+
+type GitDiffFile struct {
+	FileName    string `json:"filename"`              // path relative to repo root
+	Status      string `json:"status"`                // "modified" | "added" | "deleted" | "renamed" | "untracked"
+	OldFileName string `json:"oldfilename,omitempty"` // for renames
+	Original64  string `json:"original64"`            // base64 of HEAD contents ("" for added/untracked)
+	Modified64  string `json:"modified64"`            // base64 of working-tree contents ("" for deleted)
+	Insertions  int    `json:"insertions,omitempty"`
+	Deletions   int    `json:"deletions,omitempty"`
+	Binary      bool   `json:"binary,omitempty"`
 }

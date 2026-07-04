@@ -105,6 +105,7 @@ type SettingsType struct {
 	TermLocalShellOpts      []string `json:"term:localshellopts,omitempty"`
 	TermIgnoredProcesses    []string `json:"term:ignoredprocesses,omitempty"`
 	TermGitBashPath         string   `json:"term:gitbashpath,omitempty"`
+	TermGitStatus           *bool    `json:"term:gitstatus,omitempty"`
 	TermScrollback          *int64   `json:"term:scrollback,omitempty"`
 	TermCopyOnSelect        *bool    `json:"term:copyonselect,omitempty"`
 	TermTransparency        *float64 `json:"term:transparency,omitempty"`

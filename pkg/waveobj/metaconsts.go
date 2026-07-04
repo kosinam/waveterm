@@ -78,6 +78,8 @@ const (
 	MetaKey_AiFileDiffChatId                 = "aifilediff:chatid"
 	MetaKey_AiFileDiffToolCallId             = "aifilediff:toolcallid"
 
+	MetaKey_GitDiffRepoPath                  = "gitdiff:repopath"
+
 	MetaKey_EditorClear                      = "editor:*"
 	MetaKey_EditorMinimapEnabled             = "editor:minimapenabled"
 	MetaKey_EditorStickyScrollEnabled        = "editor:stickyscrollenabled"

@@ -149,6 +149,9 @@
         "term:gitbashpath": {
           "type": "string"
         },
+        "term:gitstatus": {
+          "type": "boolean"
+        },
         "term:scrollback": {
           "type": "integer"
         },

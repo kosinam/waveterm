@@ -250,6 +250,7 @@ export const HeaderTextElem = React.memo(({ elem, preview }: { elem: HeaderElem;
                 className={clsx("block-frame-div", elem.className)}
                 onMouseOver={elem.onMouseOver}
                 onMouseOut={elem.onMouseOut}
+                onClick={elem.onClick}
             >
                 {elem.children.map((child, childIdx) => (
                     <HeaderTextElem elem={child} key={childIdx} preview={preview} />

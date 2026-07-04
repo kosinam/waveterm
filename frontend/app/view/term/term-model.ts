@@ -36,7 +36,7 @@ import {
 import * as services from "@/store/services";
 import * as keyutil from "@/util/keyutil";
 import { isMacOS, isWindows } from "@/util/platformutil";
-import { boundNumber, fireAndForget, stringToBase64 } from "@/util/util";
+import { boundNumber, fireAndForget, makeConnRoute, stringToBase64 } from "@/util/util";
 import * as jotai from "jotai";
 import * as React from "react";
 import { getBlockingCommand } from "./shellblocking";
@@ -81,6 +81,9 @@ export class TermViewModel implements ViewModel {
     termCursorBlinkUnsubFn: () => void;
     isCmdController: jotai.Atom<boolean>;
     isRestarting: jotai.PrimitiveAtom<boolean>;
+    gitStatusAtom: jotai.PrimitiveAtom<GitStatusResponse | null>;
+    gitStatusInflight: boolean = false;
+    gitStatusTimeout: ReturnType<typeof setTimeout> | null = null;
     termDurableStatus: jotai.Atom<BlockJobStatusData | null>;
     termConfigedDurable: jotai.Atom<null | boolean>;
     searchAtoms?: SearchAtoms;
@@ -107,6 +110,7 @@ export class TermViewModel implements ViewModel {
             return blockData?.meta?.["term:mode"] ?? "term";
         });
         this.isRestarting = jotai.atom(false);
+        this.gitStatusAtom = jotai.atom(null) as jotai.PrimitiveAtom<GitStatusResponse | null>;
         this.viewIcon = jotai.atom((get) => {
             const termMode = get(this.termMode);
             if (termMode == "vdom") {
@@ -224,6 +228,10 @@ export class TermViewModel implements ViewModel {
                         noGrow: true,
                         title: cwd,
                     });
+                }
+                const gitStatus = get(this.gitStatusAtom);
+                if (gitStatus?.isrepo) {
+                    rtn.push(this.makeGitStatusElem(gitStatus));
                 }
             }
             return rtn;
@@ -512,6 +520,139 @@ export class TermViewModel implements ViewModel {
             return false;
         }
         return true;
+    }
+
+    makeGitStatusElem(gitStatus: GitStatusResponse): HeaderElem {
+        const branch = gitStatus.branch || "detached";
+        // green only when everything is committed AND pushed: clean tree, no unpushed commits, tracked upstream
+        const green =
+            gitStatus.hasupstream &&
+            !gitStatus.ahead &&
+            !gitStatus.staged &&
+            !gitStatus.modified &&
+            !gitStatus.untracked;
+        const branchColorVar = green ? "var(--term-bright-green)" : "var(--warning-color)";
+
+        const title = this.makeGitStatusTitle(gitStatus, green);
+
+        // Each segment is its own colored text node so it matches the shell prompt palette.
+        const seg = (text: string, className: string): HeaderElem => ({
+            elemtype: "text",
+            text,
+            className,
+            noGrow: true,
+        });
+        const children: HeaderElem[] = [
+            {
+                elemtype: "iconbutton",
+                icon: "code-branch",
+                iconColor: branchColorVar,
+                title,
+                noAction: true,
+            },
+            seg(branch, green ? "gitstatus-branch" : "gitstatus-branch-dirty"),
+        ];
+        if (gitStatus.ahead) children.push(seg("⇡" + gitStatus.ahead, "gitstatus-ahead"));
+        if (gitStatus.behind) children.push(seg("⇣" + gitStatus.behind, "gitstatus-behind"));
+        if (gitStatus.staged) children.push(seg("●" + gitStatus.staged, "gitstatus-staged"));
+        if (gitStatus.modified) children.push(seg("!" + gitStatus.modified, "gitstatus-modified"));
+        if (gitStatus.untracked) children.push(seg("?" + gitStatus.untracked, "gitstatus-untracked"));
+        if (gitStatus.insertions) children.push(seg("+" + gitStatus.insertions, "gitstatus-add"));
+        if (gitStatus.deletions) children.push(seg("−" + gitStatus.deletions, "gitstatus-del")); // − minus sign
+
+        return {
+            elemtype: "div",
+            className: "block-frame-gitstatus",
+            onClick: () => {
+                this.openGitDiff();
+            },
+            children,
+        };
+    }
+
+    makeGitStatusTitle(gitStatus: GitStatusResponse, _green: boolean): string {
+        const parts = [`Git: ${gitStatus.branch || "detached"}`];
+        if (!gitStatus.hasupstream) {
+            parts.push("not pushed to remote");
+        } else if (gitStatus.ahead) {
+            parts.push(`${gitStatus.ahead} unpushed`);
+        }
+        if (gitStatus.behind) parts.push(`${gitStatus.behind} behind`);
+        if (gitStatus.staged) parts.push(`${gitStatus.staged} staged`);
+        if (gitStatus.modified) parts.push(`${gitStatus.modified} modified`);
+        if (gitStatus.untracked) parts.push(`${gitStatus.untracked} untracked`);
+        if (gitStatus.insertions || gitStatus.deletions)
+            parts.push(`+${gitStatus.insertions ?? 0} −${gitStatus.deletions ?? 0}`);
+        return parts.join(", ") + " — click to view diff";
+    }
+
+    openGitDiff() {
+        const blockData = globalStore.get(this.blockAtom);
+        const cwd = blockData?.meta?.["cmd:cwd"];
+        if (cwd == null) {
+            return;
+        }
+        const connection = blockData?.meta?.connection;
+        fireAndForget(async () => {
+            await createBlock(
+                {
+                    meta: {
+                        view: "gitdiff",
+                        connection,
+                        "gitdiff:repopath": cwd,
+                    },
+                },
+                true // magnified ("zoomed") pane
+            );
+        });
+    }
+
+    // refreshGitStatus fetches git status for the terminal's cwd and updates gitStatusAtom.
+    // It is debounced and only runs when the feature is enabled and a cwd is known.
+    refreshGitStatus() {
+        if (this.gitStatusTimeout != null) {
+            clearTimeout(this.gitStatusTimeout);
+        }
+        this.gitStatusTimeout = setTimeout(() => {
+            this.gitStatusTimeout = null;
+            fireAndForget(() => this.doRefreshGitStatus());
+        }, 300);
+    }
+
+    async doRefreshGitStatus() {
+        if (this.gitStatusInflight) {
+            return;
+        }
+        // default-on: only an explicit false disables the feature
+        const enabled = readAtom(getSettingsKeyAtom("term:gitstatus"));
+        if (enabled === false) {
+            if (globalStore.get(this.gitStatusAtom) != null) {
+                globalStore.set(this.gitStatusAtom, null);
+            }
+            return;
+        }
+        const blockData = globalStore.get(this.blockAtom);
+        if (blockData?.meta?.controller == "cmd") {
+            return;
+        }
+        const cwd = blockData?.meta?.["cmd:cwd"];
+        if (cwd == null) {
+            return;
+        }
+        const connection = blockData?.meta?.connection;
+        this.gitStatusInflight = true;
+        try {
+            const resp = await RpcApi.RemoteGitStatusCommand(
+                TabRpcClient,
+                { path: cwd },
+                { route: makeConnRoute(connection) }
+            );
+            globalStore.set(this.gitStatusAtom, resp);
+        } catch (e) {
+            globalStore.set(this.gitStatusAtom, null);
+        } finally {
+            this.gitStatusInflight = false;
+        }
     }
 
     multiInputHandler(data: string) {

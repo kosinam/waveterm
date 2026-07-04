@@ -575,6 +575,16 @@ declare global {
         streammeta: StreamMeta;
     };
 
+    // wshrpc.CommandRemoteGitDiffData
+    type CommandRemoteGitDiffData = {
+        path: string;
+    };
+
+    // wshrpc.CommandRemoteGitStatusData
+    type CommandRemoteGitStatusData = {
+        path: string;
+    };
+
     // wshrpc.CommandRemoteListEntriesData
     type CommandRemoteListEntriesData = {
         path: string;
@@ -1050,6 +1060,39 @@ declare global {
         configerrors: ConfigError[];
     };
 
+    // wshrpc.GitDiffFile
+    type GitDiffFile = {
+        filename: string;
+        status: string;
+        oldfilename?: string;
+        original64: string;
+        modified64: string;
+        insertions?: number;
+        deletions?: number;
+        binary?: boolean;
+    };
+
+    // wshrpc.GitDiffResponse
+    type GitDiffResponse = {
+        reporoot?: string;
+        files?: GitDiffFile[];
+    };
+
+    // wshrpc.GitStatusResponse
+    type GitStatusResponse = {
+        isrepo: boolean;
+        branch?: string;
+        detached?: boolean;
+        hasupstream?: boolean;
+        ahead?: number;
+        behind?: number;
+        staged?: number;
+        modified?: number;
+        untracked?: number;
+        insertions?: number;
+        deletions?: number;
+    };
+
     // waveobj.Job
     type Job = WaveObj & {
         connection: string;
@@ -1172,6 +1215,7 @@ declare global {
         "ai:timeoutms"?: number;
         "aifilediff:chatid"?: string;
         "aifilediff:toolcallid"?: string;
+        "gitdiff:repopath"?: string;
         "editor:*"?: boolean;
         "editor:minimapenabled"?: boolean;
         "editor:stickyscrollenabled"?: boolean;
@@ -1448,6 +1492,7 @@ declare global {
         "term:localshellopts"?: string[];
         "term:ignoredprocesses"?: string[];
         "term:gitbashpath"?: string;
+        "term:gitstatus"?: boolean;
         "term:scrollback"?: number;
         "term:copyonselect"?: boolean;
         "term:transparency"?: number;

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { getTabBadgeAtom } from "@/app/store/badge";
+import { getTabIsAgentWorkingAtom } from "@/app/store/agentnotify";
 import { refocusNode } from "@/app/store/global";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
 import { WaveEnv, WaveEnvSubset, useWaveEnv } from "@/app/waveenv/waveenv";
@@ -43,6 +44,7 @@ interface TabVProps {
     isNew: boolean;
     badges?: Badge[] | null;
     flagColor?: string | null;
+    isAgentWorking?: boolean;
     onClick: () => void;
     onClose: (event: React.MouseEvent<HTMLButtonElement, MouseEvent> | null) => void;
     onDragStart: (event: React.MouseEvent<HTMLDivElement, MouseEvent>) => void;
@@ -64,6 +66,7 @@ const TabV = forwardRef<HTMLDivElement, TabVProps>((props, ref) => {
         isNew,
         badges,
         flagColor,
+        isAgentWorking,
         onClick,
         onClose,
         onDragStart,
@@ -198,6 +201,13 @@ const TabV = forwardRef<HTMLDivElement, TabVProps>((props, ref) => {
         >
             {showDivider && <div className="tab-divider" />}
             <div className="tab-inner">
+                {flagColor && <div className="tab-flag-bg" style={{ backgroundColor: flagColor }} />}
+                {isAgentWorking && (
+                    <div
+                        className="tab-agent-pulse"
+                        style={{ "--pulse-color": "rgba(255,255,255,0.28)" } as React.CSSProperties}
+                    />
+                )}
                 <div
                     ref={editableRef}
                     className={clsx("name", { focused: isEditable })}
@@ -245,6 +255,7 @@ const TabInner = forwardRef<HTMLDivElement, TabProps>((props, ref) => {
     const env = useWaveEnv<TabEnv>();
     const [tabData, _] = env.wos.useWaveObjectValue<Tab>(makeORef("tab", id));
     const badges = useAtomValue(getTabBadgeAtom(id, env));
+    const isAgentWorking = useAtomValue(getTabIsAgentWorkingAtom(id));
 
     const rawFlagColor = tabData?.meta?.["tab:flagcolor"];
     let flagColor: string | null = null;
@@ -301,6 +312,7 @@ const TabInner = forwardRef<HTMLDivElement, TabProps>((props, ref) => {
             isNew={isNew}
             badges={badges}
             flagColor={flagColor}
+            isAgentWorking={isAgentWorking}
             onClick={handleTabClick}
             onClose={onClose}
             onDragStart={onDragStart}

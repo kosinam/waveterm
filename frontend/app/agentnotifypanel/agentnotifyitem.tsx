@@ -96,11 +96,11 @@ export const AgentNotifyItem = memo(({ notification, isRead, onNavigate, getStat
             ? "bg-red-800/70 hover:bg-red-800/80"
             : "bg-blue-700/80 hover:bg-blue-700/90";
 
-    const pulsePeak = "rgba(255, 255, 255, 0.18)";
+    const pulsePeak = "rgba(255, 255, 255, 0.38)";
     const showAccentBorder = !isRead && !isInProgress;
     const itemStyle: React.CSSProperties = {
         ...(isInProgress
-            ? ({ animation: "agent-bg-pulse-dynamic 3s ease-in-out infinite", "--pulse-color": pulsePeak } as React.CSSProperties)
+            ? ({ animation: "agent-bg-pulse-dynamic 2s ease-in-out infinite", "--pulse-color": pulsePeak } as React.CSSProperties)
             : {}),
         ...(showAccentBorder ? { boxShadow: "inset 0 0 0 2px var(--block-border-color)" } : {}),
     };

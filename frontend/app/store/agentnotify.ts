@@ -7,7 +7,7 @@ import { RpcApi } from "@/app/store/wshclientapi";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
 import { getLayoutModelForStaticTab } from "@/layout/index";
 import { fireAndForget } from "@/util/util";
-import { atom, PrimitiveAtom } from "jotai";
+import { atom, Atom, PrimitiveAtom } from "jotai";
 import { globalStore } from "./jotaiStore";
 import { waveEventSubscribeSingle } from "./wps";
 
@@ -16,6 +16,7 @@ export const agentNotificationsAtom: PrimitiveAtom<AgentNotification[]> = atom([
 
 const readIdsStorageKey = "agentNotifyReadIds";
 const defaultShellPruneAgeMs = 60 * 1000;
+const defaultCompletionPruneAgeMs = 5 * 60 * 1000;
 const shellPruneCheckIntervalMs = 30 * 1000;
 const shellPruneAgeKey: keyof SettingsType = "agent:clearreadafterms";
 const pendingPruneIds = new Set<string>();
@@ -96,6 +97,7 @@ function saveReadIdsToStorage(ids: Set<string>) {
 // auto-marking it as read on keystroke (prevents notifications from being immediately
 // dismissed when the user is already typing in the originating block).
 const notificationArrivalMs = new Map<string, number>();
+const notificationReadAtMs = new Map<string, number>();
 const notificationKeystrokeGraceMs = 3000;
 
 // Set of notifyids that have been read (navigated to), persisted across workspace switches.
@@ -164,6 +166,23 @@ function cancelInProgressIdleTimeout(notifyId: string) {
     }
 }
 
+const TabIsWorkingAtomCache = new Map<string, Atom<boolean>>();
+
+export function getTabIsAgentWorkingAtom(tabId: string): Atom<boolean> {
+    let rtn = TabIsWorkingAtomCache.get(tabId);
+    if (rtn == null) {
+        rtn = atom((get) => {
+            const inProgressMap = get(agentInProgressAtom);
+            for (const n of inProgressMap.values()) {
+                if (n.tabid === tabId) return true;
+            }
+            return false;
+        });
+        TabIsWorkingAtomCache.set(tabId, rtn);
+    }
+    return rtn;
+}
+
 // Derived count of unread notifications.
 export const agentUnreadCountAtom = atom((get) => {
     const notifications = get(agentNotificationsAtom);
@@ -220,18 +239,28 @@ function getShellPruneAgeMs(): number {
 }
 
 function pruneReadShellNotifications(): void {
-    const pruneAgeMs = getShellPruneAgeMs();
-    if (pruneAgeMs < 0) return;
-
+    const shellPruneAgeMs = getShellPruneAgeMs();
     const now = Date.now();
     const notifications = globalStore.get(agentNotificationsAtom);
     const readIds = globalStore.get(agentReadIdsAtom);
     for (const notification of notifications) {
-        if (notification.agent !== "shell") continue;
         if (!readIds.has(notification.notifyid)) continue;
         if (!(notification.timestamp > 0)) continue;
-        if (now - notification.timestamp < pruneAgeMs) continue;
         if (pendingPruneIds.has(notification.notifyid)) continue;
+
+        const isShell = notification.agent === "shell";
+        const isCompletion = notification.status === "completion";
+        let pruneAgeMs: number;
+        if (isShell) {
+            if (shellPruneAgeMs < 0) continue;
+            pruneAgeMs = shellPruneAgeMs;
+        } else if (isCompletion) {
+            pruneAgeMs = defaultCompletionPruneAgeMs;
+        } else {
+            continue;
+        }
+        const readAt = notificationReadAtMs.get(notification.notifyid) ?? 0;
+        if (readAt === 0 || now - readAt < pruneAgeMs) continue;
 
         pendingPruneIds.add(notification.notifyid);
         fireAndForget(async () => {
@@ -252,6 +281,7 @@ export function markAgentNotificationRead(notifyId: string): void {
         saveReadIdsToStorage(next);
         return next;
     });
+    notificationReadAtMs.set(notifyId, Date.now());
     pruneReadShellNotifications();
 }
 
@@ -263,6 +293,7 @@ function clearAgentNotificationReadState(notifyId: string): void {
         saveReadIdsToStorage(next);
         return next;
     });
+    notificationReadAtMs.delete(notifyId);
 }
 
 function getEventBlockId(target: EventTarget | null): string | null {
@@ -298,7 +329,11 @@ export function markUnreadNotificationsReadForBlockId(
         if (notificationBlockId !== targetBlockId) continue;
         const arrivedAt = notificationArrivalMs.get(notification.notifyid) ?? 0;
         if (!opts?.ignoreGracePeriod && now - arrivedAt < notificationKeystrokeGraceMs) continue;
-        markAgentNotificationRead(notification.notifyid);
+        if (notification.agent === "shell" && notification.status === "completion") {
+            clearAgentNotification(notification.notifyid);
+        } else {
+            markAgentNotificationRead(notification.notifyid);
+        }
     }
 }
 
@@ -410,6 +445,7 @@ export function setupAgentNotifySubscription(): void {
                 globalStore.set(agentInProgressAtom, new Map());
                 globalStore.set(agentReadIdsAtom, new Set<string>());
                 saveReadIdsToStorage(new Set<string>());
+                notificationReadAtMs.clear();
                 return;
             }
             if (data.clear && data.notifyid) {
@@ -425,6 +461,7 @@ export function setupAgentNotifySubscription(): void {
                 });
                 clearAgentNotificationReadState(data.notifyid);
                 notificationArrivalMs.delete(data.notifyid);
+                notificationReadAtMs.delete(data.notifyid);
                 return;
             }
             if (data.notification == null) return;
