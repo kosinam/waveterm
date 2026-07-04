@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -34,22 +35,28 @@ func runGit(ctx context.Context, dir string, args ...string) (string, error) {
 	cmd.Stderr = &stderr
 	err := cmd.Run()
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("%w: %s", err, strings.TrimSpace(stderr.String()))
 	}
 	return stdout.String(), nil
 }
 
 // repoRoot resolves the top-level directory of the repo containing path.
-func repoRoot(ctx context.Context, path string) (string, bool) {
+// Returns (root, isRepo, err): isRepo=false with nil err only when git definitively
+// reports "not a git repository"; any other failure (timeout, exec error) returns a
+// non-nil err so callers can preserve prior state instead of treating it as "no repo".
+func repoRoot(ctx context.Context, path string) (string, bool, error) {
 	out, err := runGit(ctx, path, "rev-parse", "--show-toplevel")
 	if err != nil {
-		return "", false
+		if strings.Contains(err.Error(), "not a git repository") {
+			return "", false, nil
+		}
+		return "", false, err
 	}
 	root := strings.TrimSpace(out)
 	if root == "" {
-		return "", false
+		return "", false, nil
 	}
-	return root, true
+	return root, true, nil
 }
 
 func (impl *ServerImpl) RemoteGitStatusCommand(ctx context.Context, data wshrpc.CommandRemoteGitStatusData) (*wshrpc.GitStatusResponse, error) {
@@ -57,8 +64,12 @@ func (impl *ServerImpl) RemoteGitStatusCommand(ctx context.Context, data wshrpc.
 	if path == "" {
 		path = "."
 	}
-	root, ok := repoRoot(ctx, path)
-	if !ok {
+	root, isRepo, err := repoRoot(ctx, path)
+	if err != nil {
+		// transient git failure — surface as an error so the frontend keeps the last badge
+		return nil, err
+	}
+	if !isRepo {
 		return &wshrpc.GitStatusResponse{IsRepo: false}, nil
 	}
 	resp := &wshrpc.GitStatusResponse{IsRepo: true}
@@ -164,8 +175,11 @@ func (impl *ServerImpl) RemoteGitDiffCommand(ctx context.Context, data wshrpc.Co
 	if path == "" {
 		path = "."
 	}
-	root, ok := repoRoot(ctx, path)
-	if !ok {
+	root, isRepo, err := repoRoot(ctx, path)
+	if err != nil {
+		return nil, err
+	}
+	if !isRepo {
 		return &wshrpc.GitDiffResponse{}, nil
 	}
 	resp := &wshrpc.GitDiffResponse{RepoRoot: root}
