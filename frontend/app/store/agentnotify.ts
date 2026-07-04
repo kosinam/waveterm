@@ -36,6 +36,7 @@ function areAgentNotificationsEqual(a: AgentNotification, b: AgentNotification):
         a.message === b.message &&
         a.workdir === b.workdir &&
         a.branch === b.branch &&
+        a.gitstate === b.gitstate &&
         a.worktree === b.worktree &&
         a.timestamp === b.timestamp &&
         a.workspacename === b.workspacename

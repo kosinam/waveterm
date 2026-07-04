@@ -94,6 +94,7 @@ declare global {
         topic?: string;
         workdir?: string;
         branch?: string;
+        gitstate?: string;
         worktree?: string;
         timestamp: number;
         workspacename?: string;

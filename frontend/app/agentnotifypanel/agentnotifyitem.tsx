@@ -30,6 +30,22 @@ function shortenBranch(branch: string): string {
     return branch.substring(0, 22) + "…";
 }
 
+// gitStateColor maps a notification's git push/dirty state to a branch color:
+// pushed → green, committed-not-pushed → blue, uncommitted → amber. Returns undefined
+// (fall back to the default meta color) when the state is unknown.
+function gitStateColor(gitState: string | undefined): string | undefined {
+    switch (gitState) {
+        case "pushed":
+            return "var(--term-bright-green)";
+        case "unpushed":
+            return "var(--term-bright-blue)";
+        case "dirty":
+            return "var(--warning-color)";
+        default:
+            return undefined;
+    }
+}
+
 function getConnHostname(connName: string): string {
     if (!connName || isLocalConnName(connName)) return "";
     if (connName.startsWith("wsl://")) return connName.slice(6);
@@ -176,7 +192,14 @@ export const AgentNotifyItem = memo(({ notification, isRead, onNavigate, getStat
                                 </span>
                             )}
                             {notification.branch && (
-                                <span className={cn("flex items-center gap-0.5 text-[10px] min-w-0", metaColor)}>
+                                <span
+                                    className={cn("flex items-center gap-0.5 text-[10px] min-w-0", metaColor)}
+                                    style={
+                                        gitStateColor(notification.gitstate)
+                                            ? { color: gitStateColor(notification.gitstate) }
+                                            : undefined
+                                    }
+                                >
                                     <i className="fa-solid fa-code-branch shrink-0" style={{ fontSize: "9px" }} />
                                     <span className="truncate">{shortenBranch(notification.branch)}</span>
                                 </span>

@@ -475,6 +475,40 @@ func runGitCmd(dir string, args ...string) string {
 	return strings.TrimSpace(string(out))
 }
 
+// gitPushState reports the push/dirty state of the git repo at dir:
+// "dirty" (uncommitted changes), "unpushed" (clean but ahead of / not tracking an
+// upstream), "pushed" (clean and fully pushed), or "" (not a git repo).
+func gitPushState(dir string) string {
+	out := runGitCmd(dir, "status", "--porcelain=v2", "--branch")
+	if out == "" {
+		return ""
+	}
+	hasUpstream := false
+	ahead := 0
+	for _, line := range strings.Split(out, "\n") {
+		if line == "" {
+			continue
+		}
+		if !strings.HasPrefix(line, "#") {
+			return "dirty" // any porcelain entry line means uncommitted changes
+		}
+		if strings.HasPrefix(line, "# branch.upstream ") {
+			hasUpstream = true
+		} else if strings.HasPrefix(line, "# branch.ab ") {
+			abFields := strings.Fields(strings.TrimPrefix(line, "# branch.ab "))
+			if len(abFields) == 2 {
+				if a, err := strconv.Atoi(strings.TrimPrefix(abFields[0], "+")); err == nil {
+					ahead = a
+				}
+			}
+		}
+	}
+	if !hasUpstream || ahead > 0 {
+		return "unpushed"
+	}
+	return "pushed"
+}
+
 // linkedWorktreeMainRepo returns the main repo root when dir is inside a linked
 // worktree, and "" when it is the main working tree or not a git repo.
 // Detection: --git-dir and --git-common-dir point to different locations only
@@ -523,6 +557,7 @@ func sendHookNotificationForAgentWithNotifyIDLifecycle(message, cwd, status, age
 		workDir = mainRepo
 		branch = runGitCmd(mainRepo, "branch", "--show-current")
 	}
+	gitState := gitPushState(workDir)
 	if homeDir := os.Getenv("HOME"); homeDir != "" {
 		if strings.HasPrefix(workDir, homeDir+"/") {
 			workDir = "~/" + workDir[len(homeDir)+1:]
@@ -556,6 +591,7 @@ func sendHookNotificationForAgentWithNotifyIDLifecycle(message, cwd, status, age
 		Message:   message,
 		WorkDir:   workDir,
 		Branch:    branch,
+		GitState:  gitState,
 		Worktree:  worktree,
 	}
 
@@ -676,6 +712,7 @@ func sendClaudeHookNotificationWithTopic(message, cwd, status, notifyId, lifecyc
 		workDir = mainRepo
 		branch = runGitCmd(mainRepo, "branch", "--show-current")
 	}
+	gitState := gitPushState(workDir)
 	if homeDir := os.Getenv("HOME"); homeDir != "" {
 		if strings.HasPrefix(workDir, homeDir+"/") {
 			workDir = "~/" + workDir[len(homeDir)+1:]
@@ -713,6 +750,7 @@ func sendClaudeHookNotificationWithTopic(message, cwd, status, notifyId, lifecyc
 		Topic:     topic,
 		WorkDir:   workDir,
 		Branch:    branch,
+		GitState:  gitState,
 		Worktree:  worktree,
 	}
 

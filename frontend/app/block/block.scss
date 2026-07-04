@@ -267,6 +267,10 @@
                             color: var(--term-bright-green);
                         }
 
+                        .gitstatus-branch-unpushed {
+                            color: var(--term-bright-blue);
+                        }
+
                         .gitstatus-branch-dirty {
                             color: var(--warning-color);
                         }

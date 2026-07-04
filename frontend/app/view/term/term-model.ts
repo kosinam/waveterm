@@ -524,16 +524,23 @@ export class TermViewModel implements ViewModel {
 
     makeGitStatusElem(gitStatus: GitStatusResponse): HeaderElem {
         const branch = gitStatus.branch || "detached";
-        // green only when everything is committed AND pushed: clean tree, no unpushed commits, tracked upstream
-        const green =
-            gitStatus.hasupstream &&
-            !gitStatus.ahead &&
-            !gitStatus.staged &&
-            !gitStatus.modified &&
-            !gitStatus.untracked;
-        const branchColorVar = green ? "var(--term-bright-green)" : "var(--warning-color)";
+        // 3-state branch color: amber if uncommitted, blue if committed-not-pushed, green if fully synced
+        const dirty = !!(gitStatus.staged || gitStatus.modified || gitStatus.untracked);
+        const unpushed = !gitStatus.hasupstream || !!gitStatus.ahead;
+        let branchColorVar: string;
+        let branchClass: string;
+        if (dirty) {
+            branchColorVar = "var(--warning-color)";
+            branchClass = "gitstatus-branch-dirty";
+        } else if (unpushed) {
+            branchColorVar = "var(--term-bright-blue)";
+            branchClass = "gitstatus-branch-unpushed";
+        } else {
+            branchColorVar = "var(--term-bright-green)";
+            branchClass = "gitstatus-branch";
+        }
 
-        const title = this.makeGitStatusTitle(gitStatus, green);
+        const title = this.makeGitStatusTitle(gitStatus, !dirty && !unpushed);
 
         // Each segment is its own colored text node so it matches the shell prompt palette.
         const seg = (text: string, className: string): HeaderElem => ({
@@ -550,7 +557,7 @@ export class TermViewModel implements ViewModel {
                 title,
                 noAction: true,
             },
-            seg(branch, green ? "gitstatus-branch" : "gitstatus-branch-dirty"),
+            seg(branch, branchClass),
         ];
         if (gitStatus.ahead) children.push(seg("⇡" + gitStatus.ahead, "gitstatus-ahead"));
         if (gitStatus.behind) children.push(seg("⇣" + gitStatus.behind, "gitstatus-behind"));
