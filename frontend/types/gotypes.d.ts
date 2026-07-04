@@ -1083,6 +1083,7 @@ declare global {
     type GitStatusResponse = {
         isrepo: boolean;
         branch?: string;
+        commit?: string;
         detached?: boolean;
         hasupstream?: boolean;
         ahead?: number;

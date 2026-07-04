@@ -973,6 +973,7 @@ type CommandRemoteGitStatusData struct {
 type GitStatusResponse struct {
 	IsRepo      bool   `json:"isrepo"`
 	Branch      string `json:"branch,omitempty"`      // branch name, or short SHA when detached
+	Commit      string `json:"commit,omitempty"`      // short HEAD commit SHA (empty before the first commit)
 	Detached    bool   `json:"detached,omitempty"`    // true when HEAD is detached
 	HasUpstream bool   `json:"hasupstream,omitempty"` // true when the branch tracks an upstream
 	Ahead       int    `json:"ahead,omitempty"`       // commits ahead of upstream (unpushed)

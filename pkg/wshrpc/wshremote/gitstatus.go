@@ -112,12 +112,15 @@ func (impl *ServerImpl) RemoteGitStatusCommand(ctx context.Context, data wshrpc.
 			resp.Untracked++
 		}
 	}
-	if resp.Detached && oid != "" && oid != "(initial)" {
+	if oid != "" && oid != "(initial)" {
 		short := oid
 		if len(short) > 7 {
 			short = short[:7]
 		}
-		resp.Branch = short
+		resp.Commit = short
+		if resp.Detached {
+			resp.Branch = short
+		}
 	}
 
 	ins, del := gitNumstatTotals(ctx, root)

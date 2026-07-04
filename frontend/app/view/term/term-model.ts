@@ -559,6 +559,8 @@ export class TermViewModel implements ViewModel {
             },
             seg(branch, branchClass),
         ];
+        // short HEAD commit next to the branch (skip when detached — branch already shows the SHA)
+        if (gitStatus.commit && !gitStatus.detached) children.push(seg(gitStatus.commit, "gitstatus-commit"));
         if (gitStatus.ahead) children.push(seg("⇡" + gitStatus.ahead, "gitstatus-ahead"));
         if (gitStatus.behind) children.push(seg("⇣" + gitStatus.behind, "gitstatus-behind"));
         if (gitStatus.staged) children.push(seg("●" + gitStatus.staged, "gitstatus-staged"));
@@ -656,7 +658,8 @@ export class TermViewModel implements ViewModel {
             );
             globalStore.set(this.gitStatusAtom, resp);
         } catch (e) {
-            globalStore.set(this.gitStatusAtom, null);
+            // Keep the last known status on transient errors (e.g. while a full-screen
+            // app like claude code disrupts the terminal) so the badge doesn't vanish.
         } finally {
             this.gitStatusInflight = false;
         }

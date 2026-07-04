@@ -473,6 +473,12 @@ export function handleOsc16162Command(data: string, blockId: string, loaded: boo
             break;
         case "D":
             globalStore.set(termWrap.claudeCodeActiveAtom, false);
+            // Refresh git status when a command finishes (covers exit of full-screen
+            // apps like claude code, which disrupt the "A" prompt-ready trigger). Debounced.
+            {
+                const vm = getBlockComponentModel(blockId)?.viewModel as any;
+                vm?.refreshGitStatus?.();
+            }
             if (cmd.data.exitcode != null) {
                 rtInfo["shell:lastcmdexitcode"] = cmd.data.exitcode;
             } else {

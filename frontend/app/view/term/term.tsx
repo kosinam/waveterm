@@ -13,7 +13,7 @@ import { waveEventSubscribeSingle } from "@/app/store/wps";
 import { RpcApi } from "@/app/store/wshclientapi";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
 import type { TermViewModel } from "@/app/view/term/term-model";
-import { atoms, getOverrideConfigAtom, getSettingsPrefixAtom, WOS } from "@/store/global";
+import { atoms, getBlockMetaKeyAtom, getOverrideConfigAtom, getSettingsPrefixAtom, WOS } from "@/store/global";
 import { fireAndForget, isLocalConnName, useAtomValueSafe } from "@/util/util";
 import { computeBgStyleFromMeta } from "@/util/waveutil";
 import { ISearchOptions } from "@xterm/addon-search";
@@ -88,6 +88,19 @@ const TermConnThemeHandler = React.memo(({ model }: TerminalViewProps) => {
 });
 
 TermConnThemeHandler.displayName = "TermConnThemeHandler";
+
+// Refreshes the git-status badge on mount and whenever the cwd changes. This makes the
+// badge resilient to model remounts and to full-screen apps (claude code) that disrupt the
+// prompt-ready ("A") refresh trigger, so a wiped badge re-fetches as soon as the view renders.
+const TermGitStatusHandler = React.memo(({ blockId, model }: TerminalViewProps) => {
+    const cwd = jotai.useAtomValue(getBlockMetaKeyAtom(blockId, "cmd:cwd"));
+    React.useEffect(() => {
+        model.refreshGitStatus();
+    }, [cwd]);
+    return null;
+});
+
+TermGitStatusHandler.displayName = "TermGitStatusHandler";
 
 const TermVDomToolbarNode = ({ vdomBlockId, blockId, model }: TerminalViewProps & { vdomBlockId: string }) => {
     React.useEffect(() => {
@@ -411,6 +424,7 @@ const TerminalView = ({ blockId, model }: ViewComponentProps<TermViewModel>) => 
             {termBg && <div key="term-bg" className="absolute inset-0 z-0 pointer-events-none" style={termBg} />}
             <TermResyncHandler blockId={blockId} model={model} />
             <TermConnThemeHandler blockId={blockId} model={model} />
+            <TermGitStatusHandler blockId={blockId} model={model} />
             <TermThemeUpdater blockId={blockId} model={model} termRef={model.termRef} />
             <TermStickers config={stickerConfig} />
             <TermToolbarVDomNode key="vdom-toolbar" blockId={blockId} model={model} />
