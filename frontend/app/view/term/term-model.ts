@@ -632,12 +632,6 @@ export class TermViewModel implements ViewModel {
         if (this.gitStatusInflight) {
             return;
         }
-        // Don't refresh while a full-screen app (claude code, vim, …) owns the terminal:
-        // a transient git failure then would wipe the badge. It refreshes again on app exit ("D").
-        const tw = this.termRef.current;
-        if (tw && (globalStore.get(tw.claudeCodeActiveAtom) || tw.terminal?.buffer?.active?.type === "alternate")) {
-            return;
-        }
         // default-on: only an explicit false disables the feature
         const enabled = readAtom(getSettingsKeyAtom("term:gitstatus"));
         if (enabled === false) {

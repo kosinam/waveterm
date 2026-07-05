@@ -97,6 +97,13 @@ const TermGitStatusHandler = React.memo(({ blockId, model }: TerminalViewProps) 
     React.useEffect(() => {
         model.refreshGitStatus();
     }, [cwd]);
+    // Poll every 10s regardless of what's loaded in the terminal (full-screen apps like
+    // claude code disrupt the event-based triggers). Transient failures preserve the last
+    // value, so polling never wipes the badge.
+    React.useEffect(() => {
+        const id = setInterval(() => model.refreshGitStatus(), 10000);
+        return () => clearInterval(id);
+    }, []);
     return null;
 });
 
