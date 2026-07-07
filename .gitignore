@@ -39,3 +39,4 @@ test-results.xml
 docsite/
 
 .kilo-format-temp-*
+.claude/
