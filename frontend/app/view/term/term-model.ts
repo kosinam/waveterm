@@ -43,6 +43,21 @@ import { getBlockingCommand } from "./shellblocking";
 import { computeTheme, DefaultTermTheme } from "./termutil";
 import { TermWrap, WebGLSupported } from "./termwrap";
 
+// Git status is a property of the block (its cwd's repo), not of a disposable view-model
+// instance. Key the atoms to blockId so a model reconstruction (BlockInner remount — e.g.
+// during `claude --resume`, when the block's WaveObject value transiently reads null) reuses
+// the same atom and preserves the last badge instead of nulling it. Without this, a fresh
+// TermViewModel starts with a null gitStatusAtom and the badge vanishes entirely.
+const gitStatusAtomCache = new Map<string, jotai.PrimitiveAtom<GitStatusResponse | null>>();
+function getGitStatusAtomForBlock(blockId: string): jotai.PrimitiveAtom<GitStatusResponse | null> {
+    let a = gitStatusAtomCache.get(blockId);
+    if (a == null) {
+        a = jotai.atom(null) as jotai.PrimitiveAtom<GitStatusResponse | null>;
+        gitStatusAtomCache.set(blockId, a);
+    }
+    return a;
+}
+
 export class TermViewModel implements ViewModel {
     viewType: string;
     nodeModel: BlockNodeModel;
@@ -110,7 +125,7 @@ export class TermViewModel implements ViewModel {
             return blockData?.meta?.["term:mode"] ?? "term";
         });
         this.isRestarting = jotai.atom(false);
-        this.gitStatusAtom = jotai.atom(null) as jotai.PrimitiveAtom<GitStatusResponse | null>;
+        this.gitStatusAtom = getGitStatusAtomForBlock(blockId);
         this.viewIcon = jotai.atom((get) => {
             const termMode = get(this.termMode);
             if (termMode == "vdom") {
@@ -229,10 +244,10 @@ export class TermViewModel implements ViewModel {
                         title: cwd,
                     });
                 }
-                const gitStatus = get(this.gitStatusAtom);
-                if (gitStatus?.isrepo) {
-                    rtn.push(this.makeGitStatusElem(gitStatus));
-                }
+            }
+            const gitStatus = get(this.gitStatusAtom);
+            if (gitStatus?.isrepo) {
+                rtn.push(this.makeGitStatusElem(gitStatus));
             }
             return rtn;
         });
@@ -557,8 +572,9 @@ export class TermViewModel implements ViewModel {
                 title,
                 noAction: true,
             },
-            seg(branch, branchClass),
         ];
+        if (gitStatus.reponame) children.push(seg(gitStatus.reponame, "gitstatus-reponame"));
+        children.push(seg("[" + branch + "]", branchClass));
         // short HEAD commit next to the branch (skip when detached — branch already shows the SHA)
         if (gitStatus.commit && !gitStatus.detached) children.push(seg(gitStatus.commit, "gitstatus-commit"));
         if (gitStatus.ahead) children.push(seg("⇡" + gitStatus.ahead, "gitstatus-ahead"));
@@ -580,7 +596,8 @@ export class TermViewModel implements ViewModel {
     }
 
     makeGitStatusTitle(gitStatus: GitStatusResponse, _green: boolean): string {
-        const parts = [`Git: ${gitStatus.branch || "detached"}`];
+        const repoPrefix = gitStatus.reponame ? `${gitStatus.reponame} ` : "";
+        const parts = [`Git: ${repoPrefix}${gitStatus.branch || "detached"}`];
         if (!gitStatus.hasupstream) {
             parts.push("not pushed to remote");
         } else if (gitStatus.ahead) {
@@ -641,10 +658,7 @@ export class TermViewModel implements ViewModel {
             return;
         }
         const blockData = globalStore.get(this.blockAtom);
-        if (blockData?.meta?.controller == "cmd") {
-            return;
-        }
-        const cwd = blockData?.meta?.["cmd:cwd"];
+        const cwd = blockData?.meta?.["cmd:cwd"] ?? null;
         if (cwd == null) {
             return;
         }
@@ -654,12 +668,21 @@ export class TermViewModel implements ViewModel {
             const resp = await RpcApi.RemoteGitStatusCommand(
                 TabRpcClient,
                 { path: cwd },
-                { route: makeConnRoute(connection) }
+                // A client-side timeout is essential: without it, an unanswered call
+                // (route not ready at startup, or disrupted while a full-screen app like
+                // claude code takes over) never settles, so the finally below never runs
+                // and gitStatusInflight latches true — permanently killing the poll.
+                { route: makeConnRoute(connection), timeout: 10000 }
             );
-            globalStore.set(this.gitStatusAtom, resp);
+            if (resp?.isrepo) {
+                globalStore.set(this.gitStatusAtom, resp);
+            } else {
+                // Genuinely not a git repository. The backend returns an *error* (not
+                // isrepo:false) for transient failures, so this is a real "no repo here".
+                globalStore.set(this.gitStatusAtom, null);
+            }
         } catch (e) {
-            // Keep the last known status on transient errors (e.g. while a full-screen
-            // app like claude code disrupts the terminal) so the badge doesn't vanish.
+            // Transient error (RPC failure/timeout) — keep the last known status.
         } finally {
             this.gitStatusInflight = false;
         }

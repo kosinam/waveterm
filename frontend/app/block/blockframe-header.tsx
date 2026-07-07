@@ -74,6 +74,7 @@ const HeaderTextElems = React.memo(({ viewModel, blockId, preview, error }: Head
     const frameTextAtom = waveEnv.getBlockMetaKeyAtom(blockId, "frame:text");
     const frameText = jotai.useAtomValue(frameTextAtom);
     let headerTextUnion = util.useAtomValueSafe(viewModel?.viewText);
+    const viewTextArr = Array.isArray(headerTextUnion) ? headerTextUnion : null;
     headerTextUnion = frameText ?? headerTextUnion;
 
     const headerTextElems: React.ReactElement[] = [];
@@ -84,6 +85,18 @@ const HeaderTextElems = React.memo(({ viewModel, blockId, preview, error }: Head
                     &lrm;{headerTextUnion}
                 </div>
             );
+        }
+        // frame:text overrode the view's header array — keep the git-status badge visible
+        // alongside the label instead of letting the string swallow it.
+        if (frameText != null && viewTextArr != null) {
+            const gitElems = viewTextArr.filter(
+                (e) =>
+                    typeof (e as any)?.className === "string" &&
+                    (e as any).className.startsWith("block-frame-gitstatus")
+            );
+            if (gitElems.length > 0) {
+                headerTextElems.push(...renderHeaderElements(gitElems, preview));
+            }
         }
     } else if (Array.isArray(headerTextUnion)) {
         headerTextElems.push(...renderHeaderElements(headerTextUnion, preview));

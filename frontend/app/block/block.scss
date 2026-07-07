@@ -263,6 +263,10 @@
                         }
 
                         // colors mirror the shell prompt / terminal ANSI palette
+                        .gitstatus-reponame {
+                            color: var(--secondary-text-color);
+                        }
+
                         .gitstatus-branch {
                             color: var(--term-bright-green);
                         }

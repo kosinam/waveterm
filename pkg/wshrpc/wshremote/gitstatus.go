@@ -72,11 +72,11 @@ func (impl *ServerImpl) RemoteGitStatusCommand(ctx context.Context, data wshrpc.
 	if !isRepo {
 		return &wshrpc.GitStatusResponse{IsRepo: false}, nil
 	}
-	resp := &wshrpc.GitStatusResponse{IsRepo: true}
+	resp := &wshrpc.GitStatusResponse{IsRepo: true, RepoName: filepath.Base(root)}
 
 	statusOut, err := runGit(ctx, root, "status", "--porcelain=v2", "--branch")
 	if err != nil {
-		return resp, nil
+		return nil, err
 	}
 	var oid string
 	for _, line := range strings.Split(statusOut, "\n") {

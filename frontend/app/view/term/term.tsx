@@ -89,17 +89,16 @@ const TermConnThemeHandler = React.memo(({ model }: TerminalViewProps) => {
 
 TermConnThemeHandler.displayName = "TermConnThemeHandler";
 
-// Refreshes the git-status badge on mount and whenever the cwd changes. This makes the
-// badge resilient to model remounts and to full-screen apps (claude code) that disrupt the
-// prompt-ready ("A") refresh trigger, so a wiped badge re-fetches as soon as the view renders.
+// Refreshes the git-status badge on mount, whenever the cwd changes (e.g. `cd`), and on a
+// fixed 10s poll as a fallback. Event triggers (cwd change here, plus OSC prompt-ready and
+// command-done in osc-handlers) keep it prompt; all refreshes are debounced and preserve the
+// last value on failure, so full-screen apps like claude code never wipe the badge.
 const TermGitStatusHandler = React.memo(({ blockId, model }: TerminalViewProps) => {
     const cwd = jotai.useAtomValue(getBlockMetaKeyAtom(blockId, "cmd:cwd"));
     React.useEffect(() => {
         model.refreshGitStatus();
     }, [cwd]);
-    // Poll every 10s regardless of what's loaded in the terminal (full-screen apps like
-    // claude code disrupt the event-based triggers). Transient failures preserve the last
-    // value, so polling never wipes the badge.
+    // fallback poll for changes not tied to a cwd change or prompt event
     React.useEffect(() => {
         const id = setInterval(() => model.refreshGitStatus(), 10000);
         return () => clearInterval(id);

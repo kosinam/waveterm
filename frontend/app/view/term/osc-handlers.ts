@@ -430,7 +430,7 @@ export function handleOsc16162Command(data: string, blockId: string, loaded: boo
             rtInfo["shell:state"] = "ready";
             globalStore.set(termWrap.shellIntegrationStatusAtom, "ready");
             globalStore.set(termWrap.claudeCodeActiveAtom, false);
-            // Refresh git status on each prompt (covers command-done and cd). Debounced in the model.
+            // Refresh git status on each prompt (covers cd and command-done). Debounced in the model.
             {
                 const vm = getBlockComponentModel(blockId)?.viewModel as any;
                 vm?.refreshGitStatus?.();
@@ -473,8 +473,8 @@ export function handleOsc16162Command(data: string, blockId: string, loaded: boo
             break;
         case "D":
             globalStore.set(termWrap.claudeCodeActiveAtom, false);
-            // Refresh git status when a command finishes (covers exit of full-screen
-            // apps like claude code, which disrupt the "A" prompt-ready trigger). Debounced.
+            // Refresh git status when a command finishes (covers exit of full-screen apps
+            // like claude code, which suppress the "A" prompt-ready trigger). Debounced.
             {
                 const vm = getBlockComponentModel(blockId)?.viewModel as any;
                 vm?.refreshGitStatus?.();

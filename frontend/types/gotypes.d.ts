@@ -1082,6 +1082,7 @@ declare global {
     // wshrpc.GitStatusResponse
     type GitStatusResponse = {
         isrepo: boolean;
+        reponame?: string;
         branch?: string;
         commit?: string;
         detached?: boolean;

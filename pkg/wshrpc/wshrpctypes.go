@@ -972,6 +972,7 @@ type CommandRemoteGitStatusData struct {
 
 type GitStatusResponse struct {
 	IsRepo      bool   `json:"isrepo"`
+	RepoName    string `json:"reponame,omitempty"`    // basename of the repo root directory
 	Branch      string `json:"branch,omitempty"`      // branch name, or short SHA when detached
 	Commit      string `json:"commit,omitempty"`      // short HEAD commit SHA (empty before the first commit)
 	Detached    bool   `json:"detached,omitempty"`    // true when HEAD is detached

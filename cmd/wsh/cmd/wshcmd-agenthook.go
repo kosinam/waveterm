@@ -776,24 +776,39 @@ func clearFrameTextForBlock() {
 	}, &wshrpc.RpcOpts{NoResponse: true})
 }
 
-// setSessionTopicForBlock sets the terminal block header to "<cwd> [<topic>]".
-// If topic is empty, leaves frame:text unset so the default live-cwd rendering takes over.
+// setSessionTopicForBlock sets the terminal block header to "<cwd> (<topic>)" and keeps the
+// block's cmd:cwd in sync with claude's working directory. claude can switch directories
+// mid-session (e.g. moving into a new worktree/branch); while it owns the full-screen
+// terminal the shell can't report that via OSC 7, so we set cmd:cwd explicitly here — that
+// drives the git-status badge (and header cwd) to follow claude's actual directory. The
+// shell reclaims cmd:cwd via OSC 7 on its next prompt after claude exits.
+// If topic is empty we still update cmd:cwd but leave frame:text unset so the default
+// live-cwd rendering takes over.
 func setSessionTopicForBlock(cwd, topic string) {
-	if topic == "" {
+	if cwd == "" && topic == "" {
 		return
 	}
 	oref, err := resolveBlockArg()
 	if err != nil || oref == nil {
 		return
 	}
-	displayCwd := cwd
-	if home := os.Getenv("HOME"); home != "" && (cwd == home || strings.HasPrefix(cwd, home+"/")) {
-		displayCwd = "~" + cwd[len(home):]
+	meta := waveobj.MetaMapType{}
+	if cwd != "" {
+		meta[waveobj.MetaKey_CmdCwd] = cwd
 	}
-	text := strings.TrimSpace(displayCwd + " (" + topic + ")")
+	if topic != "" {
+		displayCwd := cwd
+		if home := os.Getenv("HOME"); home != "" && (cwd == home || strings.HasPrefix(cwd, home+"/")) {
+			displayCwd = "~" + cwd[len(home):]
+		}
+		meta["frame:text"] = strings.TrimSpace(displayCwd + " (" + topic + ")")
+	}
+	if len(meta) == 0 {
+		return
+	}
 	_ = wshclient.SetMetaCommand(RpcClient, wshrpc.CommandSetMetaData{
 		ORef: *oref,
-		Meta: waveobj.MetaMapType{"frame:text": text},
+		Meta: meta,
 	}, &wshrpc.RpcOpts{NoResponse: true})
 }
 
