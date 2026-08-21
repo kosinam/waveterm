@@ -152,6 +152,9 @@
         "term:gitstatus": {
           "type": "boolean"
         },
+        "term:gitremotecheck": {
+          "type": "boolean"
+        },
         "term:scrollback": {
           "type": "integer"
         },
