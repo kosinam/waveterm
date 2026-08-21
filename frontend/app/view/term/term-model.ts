@@ -58,6 +58,18 @@ function getGitStatusAtomForBlock(blockId: string): jotai.PrimitiveAtom<GitStatu
     return a;
 }
 
+// "needs pull" flag from the slow ls-remote check, kept per-block (survives model remounts)
+// and separate from gitStatusAtom because it's set on a different, network-bound cadence.
+const gitRemoteBehindAtomCache = new Map<string, jotai.PrimitiveAtom<boolean>>();
+function getGitRemoteBehindAtomForBlock(blockId: string): jotai.PrimitiveAtom<boolean> {
+    let a = gitRemoteBehindAtomCache.get(blockId);
+    if (a == null) {
+        a = jotai.atom(false) as jotai.PrimitiveAtom<boolean>;
+        gitRemoteBehindAtomCache.set(blockId, a);
+    }
+    return a;
+}
+
 export class TermViewModel implements ViewModel {
     viewType: string;
     nodeModel: BlockNodeModel;
@@ -99,6 +111,9 @@ export class TermViewModel implements ViewModel {
     gitStatusAtom: jotai.PrimitiveAtom<GitStatusResponse | null>;
     gitStatusInflight: boolean = false;
     gitStatusTimeout: ReturnType<typeof setTimeout> | null = null;
+    gitRemoteBehindAtom: jotai.PrimitiveAtom<boolean>;
+    gitRemoteInflight: boolean = false;
+    lastGitRemoteCheckTs: number = 0;
     termDurableStatus: jotai.Atom<BlockJobStatusData | null>;
     termConfigedDurable: jotai.Atom<null | boolean>;
     searchAtoms?: SearchAtoms;
@@ -126,6 +141,7 @@ export class TermViewModel implements ViewModel {
         });
         this.isRestarting = jotai.atom(false);
         this.gitStatusAtom = getGitStatusAtomForBlock(blockId);
+        this.gitRemoteBehindAtom = getGitRemoteBehindAtomForBlock(blockId);
         this.viewIcon = jotai.atom((get) => {
             const termMode = get(this.termMode);
             if (termMode == "vdom") {
@@ -247,7 +263,7 @@ export class TermViewModel implements ViewModel {
             }
             const gitStatus = get(this.gitStatusAtom);
             if (gitStatus?.isrepo) {
-                rtn.push(this.makeGitStatusElem(gitStatus));
+                rtn.push(this.makeGitStatusElem(gitStatus, get(this.gitRemoteBehindAtom)));
             }
             return rtn;
         });
@@ -537,7 +553,7 @@ export class TermViewModel implements ViewModel {
         return true;
     }
 
-    makeGitStatusElem(gitStatus: GitStatusResponse): HeaderElem {
+    makeGitStatusElem(gitStatus: GitStatusResponse, remoteBehind = false): HeaderElem {
         const branch = gitStatus.branch || "detached";
         // 3-state branch color: amber if uncommitted, blue if committed-not-pushed, green if fully synced
         const dirty = !!(gitStatus.staged || gitStatus.modified || gitStatus.untracked);
@@ -555,7 +571,7 @@ export class TermViewModel implements ViewModel {
             branchClass = "gitstatus-branch";
         }
 
-        const title = this.makeGitStatusTitle(gitStatus, !dirty && !unpushed);
+        const title = this.makeGitStatusTitle(gitStatus, !dirty && !unpushed, remoteBehind);
 
         // Each segment is its own colored text node so it matches the shell prompt palette.
         const seg = (text: string, className: string): HeaderElem => ({
@@ -578,7 +594,10 @@ export class TermViewModel implements ViewModel {
         // short HEAD commit next to the branch (skip when detached — branch already shows the SHA)
         if (gitStatus.commit && !gitStatus.detached) children.push(seg(gitStatus.commit, "gitstatus-commit"));
         if (gitStatus.ahead) children.push(seg("⇡" + gitStatus.ahead, "gitstatus-ahead"));
-        if (gitStatus.behind) children.push(seg("⇣" + gitStatus.behind, "gitstatus-behind"));
+        // Single count-less "needs pull" glyph. Fires from the ls-remote check (remoteBehind);
+        // also from a real local behind count if a fetch ever produced one. No number — the
+        // exact count needs a fetch, so we don't pretend to have it.
+        if (remoteBehind || gitStatus.behind) children.push(seg("⇩", "gitstatus-needspull"));
         if (gitStatus.staged) children.push(seg("●" + gitStatus.staged, "gitstatus-staged"));
         if (gitStatus.modified) children.push(seg("!" + gitStatus.modified, "gitstatus-modified"));
         if (gitStatus.untracked) children.push(seg("?" + gitStatus.untracked, "gitstatus-untracked"));
@@ -595,7 +614,7 @@ export class TermViewModel implements ViewModel {
         };
     }
 
-    makeGitStatusTitle(gitStatus: GitStatusResponse, _green: boolean): string {
+    makeGitStatusTitle(gitStatus: GitStatusResponse, _green: boolean, remoteBehind = false): string {
         const repoPrefix = gitStatus.reponame ? `${gitStatus.reponame} ` : "";
         const parts = [`Git: ${repoPrefix}${gitStatus.branch || "detached"}`];
         if (!gitStatus.hasupstream) {
@@ -603,7 +622,8 @@ export class TermViewModel implements ViewModel {
         } else if (gitStatus.ahead) {
             parts.push(`${gitStatus.ahead} unpushed`);
         }
-        if (gitStatus.behind) parts.push(`${gitStatus.behind} behind`);
+        if (gitStatus.behind) parts.push(`${gitStatus.behind} behind — pull`);
+        else if (remoteBehind) parts.push("remote has new commits — pull");
         if (gitStatus.staged) parts.push(`${gitStatus.staged} staged`);
         if (gitStatus.modified) parts.push(`${gitStatus.modified} modified`);
         if (gitStatus.untracked) parts.push(`${gitStatus.untracked} untracked`);
@@ -685,6 +705,58 @@ export class TermViewModel implements ViewModel {
             // Transient error (RPC failure/timeout) — keep the last known status.
         } finally {
             this.gitStatusInflight = false;
+        }
+    }
+
+    // refreshGitRemote runs the slow, network-bound ls-remote check to detect whether the
+    // upstream has commits we don't have (a pull is needed). It is throttled and only runs
+    // when both term:gitstatus and term:gitremotecheck are enabled and a cwd is known.
+    refreshGitRemote() {
+        fireAndForget(() => this.doRefreshGitRemote());
+    }
+
+    async doRefreshGitRemote() {
+        if (this.gitRemoteInflight) {
+            return;
+        }
+        // both default-on: only an explicit false disables
+        if (readAtom(getSettingsKeyAtom("term:gitstatus")) === false) {
+            return;
+        }
+        if (readAtom(getSettingsKeyAtom("term:gitremotecheck")) === false) {
+            return;
+        }
+        // throttle: network check runs at most once per minute per block (guards rapid cd)
+        const now = Date.now();
+        if (now - this.lastGitRemoteCheckTs < 60_000) {
+            return;
+        }
+        const blockData = globalStore.get(this.blockAtom);
+        const cwd = blockData?.meta?.["cmd:cwd"] ?? null;
+        if (cwd == null) {
+            return;
+        }
+        const connection = blockData?.meta?.connection;
+        this.gitRemoteInflight = true;
+        this.lastGitRemoteCheckTs = now;
+        try {
+            const resp = await RpcApi.RemoteGitStatusCommand(
+                TabRpcClient,
+                { path: cwd, checkremote: true },
+                // longer timeout than the local refresh — ls-remote hits the network
+                { route: makeConnRoute(connection), timeout: 12000 }
+            );
+            if (resp?.isrepo) {
+                globalStore.set(this.gitRemoteBehindAtom, !!resp.remotebehind);
+                // also a free, fresh local status
+                globalStore.set(this.gitStatusAtom, resp);
+            } else {
+                globalStore.set(this.gitRemoteBehindAtom, false);
+            }
+        } catch (e) {
+            // Offline / auth unavailable / timeout — leave the last value, no false alarms.
+        } finally {
+            this.gitRemoteInflight = false;
         }
     }
 

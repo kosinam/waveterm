@@ -584,6 +584,7 @@ declare global {
     // wshrpc.CommandRemoteGitStatusData
     type CommandRemoteGitStatusData = {
         path: string;
+        checkremote?: boolean;
     };
 
     // wshrpc.CommandRemoteListEntriesData
@@ -1094,6 +1095,7 @@ declare global {
         untracked?: number;
         insertions?: number;
         deletions?: number;
+        remotebehind?: boolean;
     };
 
     // waveobj.Job
@@ -1496,6 +1498,7 @@ declare global {
         "term:ignoredprocesses"?: string[];
         "term:gitbashpath"?: string;
         "term:gitstatus"?: boolean;
+        "term:gitremotecheck"?: boolean;
         "term:scrollback"?: number;
         "term:copyonselect"?: boolean;
         "term:transparency"?: number;

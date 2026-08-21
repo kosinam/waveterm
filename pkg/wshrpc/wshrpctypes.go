@@ -967,7 +967,8 @@ type CommandRemoteProcessSignalData struct {
 }
 
 type CommandRemoteGitStatusData struct {
-	Path string `json:"path"` // any path inside the repo (typically the terminal cwd)
+	Path        string `json:"path"`                  // any path inside the repo (typically the terminal cwd)
+	CheckRemote bool   `json:"checkremote,omitempty"` // when set, also contact the remote (ls-remote) to detect if a pull is needed
 }
 
 type GitStatusResponse struct {
@@ -984,6 +985,10 @@ type GitStatusResponse struct {
 	Untracked   int    `json:"untracked,omitempty"`   // untracked files
 	Insertions  int    `json:"insertions,omitempty"`  // added lines (staged + unstaged)
 	Deletions   int    `json:"deletions,omitempty"`   // removed lines (staged + unstaged)
+	// RemoteBehind is set only when the request had CheckRemote: true. It reports that the
+	// remote branch has commits we don't have locally (behind/diverged → pull needed),
+	// detected via ls-remote without fetching. It is not an exact count.
+	RemoteBehind bool `json:"remotebehind,omitempty"`
 }
 
 type CommandRemoteGitDiffData struct {

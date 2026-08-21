@@ -12,10 +12,9 @@ import (
 
 func TestClassifyCodexStopStatus(t *testing.T) {
 	tests := []struct {
-		name            string
-		message         string
-		hasPendingError bool
-		want            string
+		name    string
+		message string
+		want    string
 	}{
 		{name: "empty", message: "", want: ""},
 		{name: "completion", message: "Implemented the change and updated the tests.", want: "completion"},
@@ -24,19 +23,15 @@ func TestClassifyCodexStopStatus(t *testing.T) {
 		{name: "mentions prior blocking", message: "Blocked earlier by approval, but the task is now done.", want: "completion"},
 		{name: "mentions failure in summary", message: "The build failed earlier because the file did not exist, but I fixed it and the task is complete.", want: "completion"},
 		{name: "mentions approval in done text", message: "I needed approval earlier, but the task is now complete.", want: "completion"},
-		{name: "pending error overrides completion text", message: "Implemented the change and updated the tests.", hasPendingError: true, want: "error"},
 		{name: "question with explicit choices resolves to completion", message: "Would you like me to run the following command?\n\n1. Yes, proceed\n2. No, and tell Codex what to do differently", want: "completion"},
 		{name: "question with explicit choices after a longer intro resolves to completion", message: "Would you like me to proceed with the next verification step?\n\n1. Generate a minimal end-of-turn question prompt only\n2. Summarize the exact stop-classifier patterns now in use\n3. Stop here and wait for your confirmation", want: "completion"},
-		{name: "pending error still wins over end-of-turn question text", message: "Would you like me to run the following command?\n\n1. Yes, proceed\n2. No, and tell Codex what to do differently", hasPendingError: true, want: "error"},
 		{name: "question without choices is not enough", message: "I need your approval before I can continue.", want: "completion"},
 		{name: "terminal error", message: "I couldn't complete the task because the build failed.", want: "error"},
-		{name: "terminal error with pending error", message: "I couldn't complete the task because the build failed.", hasPendingError: true, want: "error"},
-		{name: "pending error with empty final message", message: "", hasPendingError: true, want: "error"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := classifyCodexStopStatus(tc.message, tc.hasPendingError); got != tc.want {
-				t.Fatalf("classifyCodexStopStatus(%q, %v) = %q, want %q", tc.message, tc.hasPendingError, got, tc.want)
+			if got := classifyCodexStopStatus(tc.message); got != tc.want {
+				t.Fatalf("classifyCodexStopStatus(%q) = %q, want %q", tc.message, got, tc.want)
 			}
 		})
 	}
@@ -91,5 +86,15 @@ func TestExtractTranscriptText(t *testing.T) {
 	want := "Done. I updated the flaky test and the suite passes now."
 	if got != want {
 		t.Fatalf("extractTranscriptText() = %q, want %q", got, want)
+	}
+}
+
+func TestAgentNotifyFlags(t *testing.T) {
+	flag := agentNotifyCmd.Flags().Lookup("topic")
+	if flag == nil {
+		t.Fatalf("expected --topic flag to be registered on agentnotify")
+	}
+	if flag.DefValue != "" {
+		t.Fatalf("expected --topic default to be empty, got %q", flag.DefValue)
 	}
 }

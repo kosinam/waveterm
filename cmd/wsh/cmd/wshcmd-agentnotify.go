@@ -41,6 +41,7 @@ var (
 	agentNotifyNotifyId  string
 	agentNotifyAgent     string
 	agentNotifyLifecycle string
+	agentNotifyTopic     string
 )
 
 func init() {
@@ -54,6 +55,7 @@ func init() {
 	agentNotifyCmd.Flags().StringVar(&agentNotifyTitle, "title", "", "also send an OS desktop notification with this title")
 	agentNotifyCmd.Flags().StringVar(&agentNotifyNotifyId, "notifyid", "", "stable notification ID for upsert (overrides block ORef and random UUID)")
 	agentNotifyCmd.Flags().StringVar(&agentNotifyAgent, "agent", "", "agent executable name shown in notification (e.g. claude, opencode)")
+	agentNotifyCmd.Flags().StringVar(&agentNotifyTopic, "topic", "", "session topic / title shown in notification panel and terminal header")
 }
 
 func agentNotifyRun(cmd *cobra.Command, args []string) (rtnErr error) {
@@ -101,6 +103,7 @@ func agentNotifyRun(cmd *cobra.Command, args []string) (rtnErr error) {
 		Status:    agentNotifyStatus,
 		Lifecycle: agentNotifyLifecycle,
 		Message:   message,
+		Topic:     agentNotifyTopic,
 		WorkDir:   workDir,
 		Branch:    agentNotifyBranch,
 		Worktree:  agentNotifyWorktree,
@@ -109,6 +112,10 @@ func agentNotifyRun(cmd *cobra.Command, args []string) (rtnErr error) {
 	err = wshclient.AgentNotifyCommand(RpcClient, notification, &wshrpc.RpcOpts{NoResponse: true})
 	if err != nil {
 		return fmt.Errorf("sending agent notification: %v", err)
+	}
+
+	if agentNotifyTopic != "" {
+		setSessionTopicForBlock(workDir, agentNotifyTopic)
 	}
 
 	if agentNotifyBeep {

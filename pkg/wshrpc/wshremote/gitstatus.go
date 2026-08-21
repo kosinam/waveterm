@@ -20,6 +20,7 @@ import (
 
 const (
 	gitCmdTimeout   = 5 * time.Second
+	gitNetTimeout   = 8 * time.Second // network git ops (ls-remote) — bounded so they can't hang the status
 	gitMaxFileSize  = 2 * 1024 * 1024 // don't load file contents larger than this into the diff viewer
 	gitMaxDiffFiles = 500             // cap the number of files returned by the diff command
 )
@@ -38,6 +39,59 @@ func runGit(ctx context.Context, dir string, args ...string) (string, error) {
 		return "", fmt.Errorf("%w: %s", err, strings.TrimSpace(stderr.String()))
 	}
 	return stdout.String(), nil
+}
+
+// runGitNet runs a git subcommand that may touch the network (e.g. ls-remote). It uses a
+// longer timeout and a non-interactive environment so it can never block on a credential or
+// SSH prompt — it fails fast instead.
+func runGitNet(ctx context.Context, dir string, args ...string) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, gitNetTimeout)
+	defer cancel()
+	fullArgs := append([]string{"-C", dir, "-c", "core.quotepath=false"}, args...)
+	cmd := exec.CommandContext(ctx, "git", fullArgs...)
+	cmd.Env = append(os.Environ(),
+		"GIT_TERMINAL_PROMPT=0",
+		"GIT_SSH_COMMAND=ssh -oBatchMode=yes -oConnectTimeout=5",
+	)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return "", fmt.Errorf("%w: %s", err, strings.TrimSpace(stderr.String()))
+	}
+	return stdout.String(), nil
+}
+
+// remoteNeedsPull reports whether the tracked upstream branch has commits we don't have
+// locally, using ls-remote (no fetch, no ref writes). Best-effort: any failure (offline,
+// auth unavailable, no upstream) returns false so the badge never shows a false alarm.
+func remoteNeedsPull(ctx context.Context, root string) bool {
+	upstream, err := runGit(ctx, root, "rev-parse", "--abbrev-ref", "@{upstream}")
+	if err != nil {
+		return false
+	}
+	upstream = strings.TrimSpace(upstream)
+	// upstream is "<remote>/<branch>"; the branch may itself contain slashes.
+	slash := strings.IndexByte(upstream, '/')
+	if slash <= 0 || slash >= len(upstream)-1 {
+		return false
+	}
+	remote, branch := upstream[:slash], upstream[slash+1:]
+	out, err := runGitNet(ctx, root, "ls-remote", remote, "refs/heads/"+branch)
+	if err != nil {
+		return false
+	}
+	fields := strings.Fields(strings.TrimSpace(out))
+	if len(fields) == 0 || fields[0] == "" {
+		return false
+	}
+	tipSha := fields[0]
+	// If we already have the remote tip commit locally, we're equal or ahead — no pull.
+	// If we don't have it, the remote moved ahead of us (behind/diverged) — needs pull.
+	if _, err := runGit(ctx, root, "cat-file", "-e", tipSha+"^{commit}"); err == nil {
+		return false
+	}
+	return true
 }
 
 // repoRoot resolves the top-level directory of the repo containing path.
@@ -137,6 +191,12 @@ func (impl *ServerImpl) RemoteGitStatusCommand(ctx context.Context, data wshrpc.
 	ins, del := gitNumstatTotals(ctx, root)
 	resp.Insertions = ins
 	resp.Deletions = del
+
+	// Opt-in network check (slow path): does the remote have commits we don't? This is the
+	// only branch that touches the network; the frequent local refreshes never set CheckRemote.
+	if data.CheckRemote && resp.HasUpstream && !resp.Detached {
+		resp.RemoteBehind = remoteNeedsPull(ctx, root)
+	}
 	return resp, nil
 }
 

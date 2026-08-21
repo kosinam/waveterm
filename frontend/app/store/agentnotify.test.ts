@@ -28,16 +28,16 @@ describe("agentnotify read reset policy", () => {
         expect(shouldResetReadState(null, makeNotification())).toBe(true);
     });
 
-    it("keeps a read question read on timestamp-only refresh", () => {
+    it("keeps a read question read on duplicate event with same timestamp", () => {
         const existing = makeNotification({ agent: "claude", notifyid: "n1", timestamp: 100 });
-        const incoming = makeNotification({ agent: "claude", notifyid: "n1", timestamp: 200 });
+        const incoming = makeNotification({ agent: "claude", notifyid: "n1", timestamp: 100 });
         expect(shouldResetReadState(existing, incoming)).toBe(false);
     });
 
-    it("keeps a read question read on same-content refresh", () => {
+    it("re-alerts a read question when a new turn arrives with new timestamp", () => {
         const existing = makeNotification({ notifyid: "codex-question:b1", timestamp: 100 });
         const incoming = makeNotification({ notifyid: "codex-question:b1", timestamp: 200 });
-        expect(shouldResetReadState(existing, incoming)).toBe(false);
+        expect(shouldResetReadState(existing, incoming)).toBe(true);
     });
 
     it("marks a read question unread when it resolves to completion", () => {
@@ -47,20 +47,26 @@ describe("agentnotify read reset policy", () => {
     });
 
     it("re-alerts when a question message changes", () => {
-        const existing = makeNotification({ status: "question", message: "Approval required" });
-        const incoming = makeNotification({ status: "question", message: "Approval required for a different command", timestamp: 200 });
+        const existing = makeNotification({ status: "question", message: "Approval required", timestamp: 100 });
+        const incoming = makeNotification({ status: "question", message: "Approval required for a different command", timestamp: 100 });
         expect(shouldResetReadState(existing, incoming)).toBe(true);
     });
 
-    it("keeps a read error read when the same error is republished", () => {
-        const existing = makeNotification({ status: "error", message: "Command failed" });
-        const incoming = makeNotification({ status: "error", message: "Command failed", timestamp: 200 });
+    it("keeps a read error read when the same error event is republished with same timestamp", () => {
+        const existing = makeNotification({ status: "error", message: "Command failed", timestamp: 100 });
+        const incoming = makeNotification({ status: "error", message: "Command failed", timestamp: 100 });
         expect(shouldResetReadState(existing, incoming)).toBe(false);
     });
 
-    it("keeps a read completion read on timestamp-only refresh", () => {
+    it("re-alerts a read error when a new error occurs with new timestamp", () => {
+        const existing = makeNotification({ status: "error", message: "Command failed", timestamp: 100 });
+        const incoming = makeNotification({ status: "error", message: "Command failed", timestamp: 200 });
+        expect(shouldResetReadState(existing, incoming)).toBe(true);
+    });
+
+    it("keeps a read completion read on duplicate event with same timestamp", () => {
         const existing = makeNotification({ status: "completion", message: "Done", timestamp: 100 });
-        const incoming = makeNotification({ status: "completion", message: "Done", timestamp: 200 });
+        const incoming = makeNotification({ status: "completion", message: "Done", timestamp: 100 });
         expect(shouldResetReadState(existing, incoming)).toBe(false);
     });
 

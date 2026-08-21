@@ -165,19 +165,11 @@ Or symlink it so it stays in sync with the repo:
 ln -s "$(pwd)/integrations/opencode/waveterm.js" ~/.config/opencode/plugins/waveterm.js
 ```
 
-**Step 2 — register the plugin in opencode:**
+OpenCode automatically loads JavaScript and TypeScript files in
+`~/.config/opencode/plugins/`; no `plugin` entry is needed in its config.
+Restart OpenCode after copying or updating the plugin.
 
-Add the plugin path to the `plugin` array in `~/.config/opencode/config.json`:
-
-```json
-{
-  "plugin": ["./plugins/waveterm.js"]
-}
-```
-
-The path is relative to `~/.config/opencode/`, so `./plugins/waveterm.js` points to the file copied in Step 1.
-
-The plugin sends a `question` notification (with a beep) when opencode asks for input, an `error` notification when a tool fails or the session errors, and a `completion` notification when the session goes idle. All notifications for a given project collapse onto a single Agent panel entry keyed by worktree path.
+The plugin sends a `question` notification (with a beep) when opencode requests an answer or permission, an `error` notification when a tool fails or the session errors, and a `completion` notification when the primary session goes idle. All notifications for a given project collapse onto a single Agent panel entry keyed by worktree path.
 
 ---
 

@@ -97,10 +97,17 @@ const TermGitStatusHandler = React.memo(({ blockId, model }: TerminalViewProps) 
     const cwd = jotai.useAtomValue(getBlockMetaKeyAtom(blockId, "cmd:cwd"));
     React.useEffect(() => {
         model.refreshGitStatus();
+        // also kick the slow "needs pull" remote check on cwd change (throttled in the model)
+        model.refreshGitRemote();
     }, [cwd]);
     // fallback poll for changes not tied to a cwd change or prompt event
     React.useEffect(() => {
         const id = setInterval(() => model.refreshGitStatus(), 10000);
+        return () => clearInterval(id);
+    }, []);
+    // slow remote "needs pull" check (ls-remote) — network-bound, so far less frequent
+    React.useEffect(() => {
+        const id = setInterval(() => model.refreshGitRemote(), 300000);
         return () => clearInterval(id);
     }, []);
     return null;

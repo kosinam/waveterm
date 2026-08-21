@@ -41,6 +41,7 @@
     "term:copyonselect": true,
     "term:durable": false,
     "term:gitstatus": true,
+    "term:gitremotecheck": true,
     "term:ignoredprocesses": [
         "vi", "vim", "nvim", "emacs", "nano", "micro", "hx", "kak",
         "less", "more", "most", "man",

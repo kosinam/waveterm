@@ -55,6 +55,7 @@ const (
 	ConfigKey_TermIgnoredProcesses           = "term:ignoredprocesses"
 	ConfigKey_TermGitBashPath                = "term:gitbashpath"
 	ConfigKey_TermGitStatus                  = "term:gitstatus"
+	ConfigKey_TermGitRemoteCheck             = "term:gitremotecheck"
 	ConfigKey_TermScrollback                 = "term:scrollback"
 	ConfigKey_TermCopyOnSelect               = "term:copyonselect"
 	ConfigKey_TermTransparency               = "term:transparency"
