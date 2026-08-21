@@ -1517,15 +1517,8 @@ func isGenericAgentErrorMessage(message string) bool {
 
 func finalizeAgentNotification(data baseds.AgentNotification, pending baseds.AgentNotification, hasPending bool) baseds.AgentNotification {
 	data.Lifecycle = normalizeAgentNotificationLifecycle(data.Lifecycle)
-	if hasPending && pending.Status == "error" {
-		// Promote completion to error when there's a pending error from an
-		// intermediate hook (e.g. a failed tool use detected by posttooluse).
-		if data.Status == "completion" {
-			data.Status = "error"
-		}
-		if pending.Message != "" && isGenericAgentErrorMessage(data.Message) {
-			data.Message = pending.Message
-		}
+	if data.Status == "error" && hasPending && pending.Message != "" && isGenericAgentErrorMessage(data.Message) {
+		data.Message = pending.Message
 	}
 	return data
 }

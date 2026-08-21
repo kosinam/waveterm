@@ -19,8 +19,8 @@ func TestResolveAgentNotificationStoresIntermediate(t *testing.T) {
 	}
 
 	resolved, storePending := resolveAgentNotification(incoming, baseds.AgentNotification{}, false, baseds.AgentNotification{}, false, 10000)
-	if resolved != nil {
-		t.Fatalf("expected intermediate notification to stay hidden")
+	if resolved == nil {
+		t.Fatalf("expected intermediate notification to be forwarded")
 	}
 	if !storePending {
 		t.Fatalf("expected intermediate notification to be stored as pending")
