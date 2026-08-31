@@ -15,6 +15,8 @@ export const WavetermPlugin = async ({ $, worktree }) => {
   const lastText = new Map()
   const childSessions = new Set()
   const sessionTitles = new Map()
+  const waitingSessions = new Set()
+  const terminalErrorSessions = new Set()
   let mainSessionId = null
 
   async function getBranch() {
@@ -80,8 +82,9 @@ export const WavetermPlugin = async ({ $, worktree }) => {
     return tool
   }
 
-  async function sendNotify(message, status, { beep = false, lifecycle = "terminal", topic = "" } = {}) {
+  async function sendNotify(message, status, { beep = false, lifecycle = "terminal", topic = "", sessionID = "" } = {}) {
     const branch = await getBranch()
+    if (lifecycle === "intermediate" && sessionID && (waitingSessions.has(sessionID) || terminalErrorSessions.has(sessionID))) return
     const args = ["agentnotify", "--agent", "opencode", "--status", status, "--lifecycle", lifecycle]
     if (worktree) {
       args.push("--workdir", worktree, "--worktree", worktree)
@@ -135,6 +138,8 @@ export const WavetermPlugin = async ({ $, worktree }) => {
           childSessions.delete(sessionID)
           lastText.delete(sessionID)
           sessionTitles.delete(sessionID)
+          waitingSessions.delete(sessionID)
+          terminalErrorSessions.delete(sessionID)
           if (sessionID === mainSessionId) {
             mainSessionId = null
             await setTerminalTitle("")
@@ -148,23 +153,33 @@ export const WavetermPlugin = async ({ $, worktree }) => {
         const status = event.properties?.status
         if (status?.type === "busy") {
           const topic = getTopic(sessionID)
-          await sendNotify("Working...", "info", { lifecycle: "intermediate", topic })
+          await sendNotify("Working...", "info", { lifecycle: "intermediate", topic, sessionID })
         }
       }
 
-      if (event.type === "question.asked") {
+      if (event.type === "question.asked" || event.type === "question.v2.asked") {
+        const sessionID = event.properties?.sessionID
+        if (sessionID && childSessions.has(sessionID)) return
+        if (sessionID) waitingSessions.add(sessionID)
         const q = event.properties?.questions?.[0]
         const text = q?.question || q?.header || "Input required"
-        const topic = getTopic()
-        await sendNotify(truncate(text, 300), "question", { beep: true, topic })
+        const topic = getTopic(sessionID)
+        await sendNotify(truncate(text, 300), "question", { beep: true, topic, sessionID })
       }
 
-      if (event.type === "permission.asked") {
-        const permission = event.properties?.permission || "Permission"
-        const pattern = event.properties?.patterns?.[0]
+      if (event.type === "permission.asked" || event.type === "permission.v2.asked") {
+        const sessionID = event.properties?.sessionID
+        if (sessionID && childSessions.has(sessionID)) return
+        if (sessionID) waitingSessions.add(sessionID)
+        const permission = event.properties?.permission || event.properties?.action || "Permission"
+        const pattern = event.properties?.patterns?.[0] || event.properties?.resources?.[0]
         const text = pattern ? `${permission}: ${pattern}` : `${permission} permission required`
-        const topic = getTopic()
-        await sendNotify(truncate(text, 300), "question", { beep: true, topic })
+        const topic = getTopic(sessionID)
+        await sendNotify(truncate(text, 300), "question", { beep: true, topic, sessionID })
+      }
+
+      if (event.type === "question.replied" || event.type === "question.rejected" || event.type === "question.v2.replied" || event.type === "question.v2.rejected" || event.type === "permission.replied" || event.type === "permission.v2.replied") {
+        waitingSessions.delete(event.properties?.sessionID)
       }
 
       if (event.type === "message.part.updated") {
@@ -175,22 +190,27 @@ export const WavetermPlugin = async ({ $, worktree }) => {
           lastText.set(part.sessionID, part.text)
         }
         if (part?.type === "tool" && part?.state?.status === "running") {
+          terminalErrorSessions.delete(part.sessionID)
           const topic = getTopic(part.sessionID)
           const desc = formatToolDescription(part.tool, part.state.input, part.state.title)
-          await sendNotify(desc, "info", { lifecycle: "intermediate", topic })
+          await sendNotify(desc, "info", { lifecycle: "intermediate", topic, sessionID: part.sessionID })
         }
         if (part?.type === "tool" && part?.state?.status === "error") {
+          terminalErrorSessions.add(part.sessionID)
           const topic = getTopic(part.sessionID)
           const text = truncate(part.state.error || "Tool error", 300)
-          await sendNotify(text, "error", { lifecycle: "intermediate", topic })
+          await sendNotify(text, "error", { topic, sessionID: part.sessionID })
         }
         if (part?.type === "tool" && part?.state?.status === "completed") {
           const s = part.state
-          const exit = s.metadata?.exit
-          if (exit !== undefined && exit !== 0) {
+          const exit = s.metadata?.exit ?? s.metadata?.exitCode ?? s.metadata?.exit_code
+          const output = s.output || s.metadata?.output || ""
+          const shellError = part.tool === "bash" && /command not found|permission denied|no such file or directory|not recognized as an internal or external command/i.test(output)
+          if ((exit !== undefined && Number(exit) !== 0) || shellError) {
+            terminalErrorSessions.add(part.sessionID)
             const topic = getTopic(part.sessionID)
-            const text = truncate((s.output || `Exit code ${exit}`).trim(), 300)
-            await sendNotify(text, "error", { lifecycle: "intermediate", topic })
+            const text = truncate((output || `Exit code ${exit}`).trim(), 300)
+            await sendNotify(text, "error", { topic, sessionID: part.sessionID })
           }
         }
       }
@@ -199,10 +219,14 @@ export const WavetermPlugin = async ({ $, worktree }) => {
         const sessionID = event.properties?.sessionID
         if (sessionID && childSessions.has(sessionID)) {
           lastText.delete(sessionID)
+          waitingSessions.delete(sessionID)
+          terminalErrorSessions.delete(sessionID)
           return
         }
         const message = truncate((sessionID && lastText.get(sessionID)) || "Session complete", 300)
         if (sessionID) lastText.delete(sessionID)
+        if (sessionID) waitingSessions.delete(sessionID)
+        if (sessionID) terminalErrorSessions.delete(sessionID)
         const topic = getTopic(sessionID)
         await sendNotify(message, "completion", { topic })
       }
@@ -211,8 +235,14 @@ export const WavetermPlugin = async ({ $, worktree }) => {
         const sessionID = event.properties?.sessionID
         const errMsg = event.properties?.error?.message || "Session error"
         if (sessionID) lastText.delete(sessionID)
+        if (sessionID) waitingSessions.delete(sessionID)
+        if (sessionID) terminalErrorSessions.delete(sessionID)
         const topic = getTopic(sessionID)
         await sendNotify(truncate(errMsg, 300), "error", { topic })
+      }
+
+      if (event.type === "pty.exited" && event.properties?.exitCode !== 0) {
+        await sendNotify(`Shell command failed (exit code ${event.properties.exitCode})`, "error")
       }
     },
   }
