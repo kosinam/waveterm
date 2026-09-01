@@ -40,3 +40,4 @@ docsite/
 
 .kilo-format-temp-*
 .claude/
+.codegraph/
